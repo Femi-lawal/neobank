@@ -1,0 +1,59 @@
+# NeoBank Repository Gitignore
+
+# Dependencies
+node_modules/
+vendor/
+
+# Build outputs
+.next/
+dist/
+build/
+out/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test outputs
+coverage/
+*.coverprofile
+test-results/
+playwright-report/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Downloaded files (don't version large HTML files)
+*.html
+!frontend/app/**/*.html
+!README.md
+
+# Stripe reference files
+Stripe*
+
+# Docker
+*.tar
+
+# Compiled binaries
+bin/

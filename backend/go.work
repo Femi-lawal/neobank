@@ -1,0 +1,10 @@
+go 1.25.5
+
+use (
+	./card-service
+	./identity-service
+	./ledger-service
+	./payment-service
+	./product-service
+	./shared-lib
+)

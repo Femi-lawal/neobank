@@ -1,0 +1,102 @@
+@import "tailwindcss";
+
+/* Theme Configuration for Tailwind v4 */
+@theme {
+  /* Stripe Gradient Colors */
+  --color-gradient-purple: #a960ee;
+  --color-gradient-red: #ff333d;
+  --color-gradient-cyan: #90e0ff;
+  --color-gradient-yellow: #ffcb57;
+
+  /* Stripe Brand Colors */
+  --color-stripe-dark: #0a2540;
+  --color-stripe-blurple: #635bff;
+
+  /* Custom Brand Colors */
+  --color-brand-50: #f0f9ff;
+  --color-brand-100: #e0f2fe;
+  --color-brand-200: #bae6fd;
+  --color-brand-300: #7dd3fc;
+  --color-brand-400: #38bdf8;
+  --color-brand-500: #0ea5e9;
+  --color-brand-600: #0284c7;
+  --color-brand-700: #0369a1;
+  --color-brand-800: #075985;
+  --color-brand-900: #0c4a6e;
+
+  /* Surface Colors */
+  --color-surface-50: #f8fafc;
+  --color-surface-100: #f1f5f9;
+  --color-surface-200: #e2e8f0;
+  --color-surface-300: #cbd5e1;
+  --color-surface-400: #94a3b8;
+  --color-surface-500: #64748b;
+  --color-surface-600: #475569;
+  --color-surface-700: #334155;
+  --color-surface-800: #1e293b;
+  --color-surface-900: #0f172a;
+  --color-surface-950: #020617;
+
+  /* Accent Colors */
+  --color-accent-500: #6366f1;
+  --color-accent-600: #4f46e5;
+}
+
+body {
+  font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 99px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Custom Utilities */
+@utility bg-stripe-gradient {
+  background: var(--color-gradient-purple);
+  background-image:
+    radial-gradient(at 40% 20%, var(--color-gradient-yellow) 0px, transparent 50%),
+    radial-gradient(at 80% 0%, var(--color-gradient-cyan) 0px, transparent 50%),
+    radial-gradient(at 0% 50%, var(--color-gradient-purple) 0px, transparent 50%),
+    radial-gradient(at 80% 50%, var(--color-gradient-red) 0px, transparent 50%),
+    radial-gradient(at 0% 100%, var(--color-gradient-purple) 0px, transparent 50%),
+    radial-gradient(at 80% 100%, var(--color-gradient-cyan) 0px, transparent 50%),
+    radial-gradient(at 0% 0%, var(--color-gradient-purple) 0px, transparent 70%);
+  min-height: 100%;
+}
+
+@utility bg-mesh {
+  background-color: #020617;
+  background-image:
+    radial-gradient(at 0% 0%, hsla(213, 94%, 38%, 0.15) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, hsla(199, 89%, 48%, 0.15) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, hsla(250, 78%, 59%, 0.15) 0px, transparent 50%),
+    radial-gradient(at 0% 100%, hsla(200, 98%, 39%, 0.15) 0px, transparent 50%);
+}
+
+@utility glass {
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+@utility text-glow {
+  text-shadow: 0 0 20px rgba(56, 189, 248, 0.5);
+}

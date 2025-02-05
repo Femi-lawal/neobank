@@ -1,0 +1,118 @@
+# Prometheus Configuration for NeoBank
+# This file configures Prometheus to scrape metrics from all microservices
+
+global:
+  scrape_interval: 15s # How often to scrape targets
+  evaluation_interval: 15s # How often to evaluate rules
+  external_labels:
+    monitor: "neobank-monitor"
+    environment: "development"
+
+# Alerting configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+          # - alertmanager:9093  # Uncomment when alertmanager is configured
+
+# Rule files for alerting
+rule_files:
+  - "alerts/*.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+    metrics_path: /metrics
+
+  # ==========================================================================
+  # NeoBank Microservices
+  # ==========================================================================
+
+  - job_name: "identity-service"
+    static_configs:
+      - targets: ["host.docker.internal:8081"]
+    metrics_path: /metrics
+    scrape_interval: 10s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: service
+        replacement: "identity-service"
+
+  - job_name: "ledger-service"
+    static_configs:
+      - targets: ["host.docker.internal:8082"]
+    metrics_path: /metrics
+    scrape_interval: 10s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: service
+        replacement: "ledger-service"
+
+  - job_name: "payment-service"
+    static_configs:
+      - targets: ["host.docker.internal:8083"]
+    metrics_path: /metrics
+    scrape_interval: 10s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: service
+        replacement: "payment-service"
+
+  - job_name: "product-service"
+    static_configs:
+      - targets: ["host.docker.internal:8084"]
+    metrics_path: /metrics
+    scrape_interval: 10s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: service
+        replacement: "product-service"
+
+  - job_name: "card-service"
+    static_configs:
+      - targets: ["host.docker.internal:8085"]
+    metrics_path: /metrics
+    scrape_interval: 10s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: service
+        replacement: "card-service"
+
+  # ==========================================================================
+  # Infrastructure Services
+  # ==========================================================================
+
+  # Redis Exporter (if using redis_exporter)
+  - job_name: "redis"
+    static_configs:
+      - targets: ["redis-exporter:9121"]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: service
+        replacement: "redis"
+
+  # Kafka Exporter (if using kafka_exporter)
+  - job_name: "kafka"
+    static_configs:
+      - targets: ["kafka-exporter:9308"]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: service
+        replacement: "kafka"
+
+  # PostgreSQL Exporter (if using postgres_exporter)
+  - job_name: "postgres"
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: service
+        replacement: "postgres"
+
+  # Node Exporter for host metrics
+  - job_name: "node"
+    static_configs:
+      - targets: ["node-exporter:9100"]

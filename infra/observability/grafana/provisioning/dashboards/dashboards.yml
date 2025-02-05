@@ -1,0 +1,15 @@
+# Grafana Dashboard Provisioning
+# Automatically loads dashboards from the dashboards directory
+
+apiVersion: 1
+
+providers:
+  - name: "NeoBank Dashboards"
+    orgId: 1
+    folder: "NeoBank"
+    folderUid: "neobank"
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /var/lib/grafana/dashboards

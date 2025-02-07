@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: neobank
+  labels:
+    app.kubernetes.io/name: neobank
+    app.kubernetes.io/part-of: neobank

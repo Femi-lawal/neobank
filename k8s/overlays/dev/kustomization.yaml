@@ -1,0 +1,38 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: neobank
+
+resources:
+  - ../../base
+
+namePrefix: dev-
+
+commonLabels:
+  environment: development
+
+# Use local/dev images
+images:
+  - name: neobank/identity-service
+    newTag: dev
+  - name: neobank/ledger-service
+    newTag: dev
+  - name: neobank/payment-service
+    newTag: dev
+  - name: neobank/product-service
+    newTag: dev
+  - name: neobank/card-service
+    newTag: dev
+  - name: neobank/frontend
+    newTag: dev
+
+# Development-specific patches
+patches:
+  # Reduce replicas for dev
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+    target:
+      kind: Deployment
+      labelSelector: "app.kubernetes.io/part-of=neobank"

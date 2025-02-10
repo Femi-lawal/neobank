@@ -1,0 +1,108 @@
+---
+# NeoBank Deploy Playbook
+# Usage: ansible-playbook -i inventory/dev playbooks/deploy.yml
+
+- name: Deploy NeoBank Infrastructure
+  hosts: db:redis
+  become: yes
+  tags: [infrastructure]
+
+  tasks:
+    - name: Install Docker
+      include_role:
+        name: docker
+
+    - name: Deploy PostgreSQL
+      docker_container:
+        name: postgres
+        image: postgres:16-alpine
+        state: started
+        restart_policy: unless-stopped
+        ports:
+          - "{{ db_port }}:5432"
+        env:
+          POSTGRES_USER: "{{ db_user }}"
+          POSTGRES_PASSWORD: "{{ db_password }}"
+          POSTGRES_DB: "{{ db_name }}"
+        volumes:
+          - postgres_data:/var/lib/postgresql/data
+      when: "'db' in group_names"
+
+    - name: Deploy Redis
+      docker_container:
+        name: redis
+        image: redis:7-alpine
+        state: started
+        restart_policy: unless-stopped
+        ports:
+          - "{{ redis_port }}:6379"
+        command: redis-server --appendonly yes
+        volumes:
+          - redis_data:/data
+      when: "'redis' in group_names"
+
+- name: Deploy NeoBank Backend Services
+  hosts: backend
+  become: yes
+  serial: 1 # Rolling deployment
+  tags: [backend]
+
+  pre_tasks:
+    - name: Get current version
+      command: docker inspect --format='{{ '{{' }}.Config.Image{{ '}}' }}' identity-service
+      register: current_version
+      ignore_errors: yes
+
+    - name: Save rollback version
+      set_fact:
+        rollback_version: "{{ current_version.stdout | default('latest') }}"
+
+  roles:
+    - role: neobank-backend
+
+  post_tasks:
+    - name: Verify all services are running
+      uri:
+        url: "http://localhost:{{ item.port }}{{ health_check_path }}"
+        method: GET
+        status_code: 200
+      loop: "{{ services | dict2items | map(attribute='value') | list }}"
+      when: item.name != 'frontend'
+      register: health_checks
+
+    - name: Rollback if health check failed
+      include_tasks: ../rollback.yml
+      when: health_checks.failed | default(false)
+
+- name: Deploy NeoBank Frontend
+  hosts: frontend
+  become: yes
+  tags: [frontend]
+
+  tasks:
+    - name: Pull frontend image
+      docker_image:
+        name: "{{ docker_registry }}/frontend"
+        tag: "{{ deploy_version | default('latest') }}"
+        source: pull
+
+    - name: Deploy frontend
+      docker_container:
+        name: frontend
+        image: "{{ docker_registry }}/frontend:{{ deploy_version | default('latest') }}"
+        state: started
+        restart_policy: unless-stopped
+        ports:
+          - "80:3000"
+        env:
+          NODE_ENV: production
+
+- name: Final Health Check
+  hosts: neobank
+  gather_facts: no
+  tags: [verify]
+
+  tasks:
+    - name: Notify deployment complete
+      debug:
+        msg: "NeoBank deployment completed successfully on {{ inventory_hostname }}"

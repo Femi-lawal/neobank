@@ -1,0 +1,48 @@
+---
+# Common variables for all environments
+app_name: neobank
+app_user: neobank
+app_group: neobank
+
+# Versions
+go_version: "1.21"
+node_version: "18"
+docker_version: "24.0"
+
+# Database
+db_name: newbank_core
+db_port: 5432
+
+# Redis
+redis_port: 6379
+
+# Services configuration
+services:
+  identity:
+    name: identity-service
+    port: 8081
+    replicas: 2
+  ledger:
+    name: ledger-service
+    port: 8082
+    replicas: 2
+  payment:
+    name: payment-service
+    port: 8083
+    replicas: 2
+  product:
+    name: product-service
+    port: 8084
+    replicas: 2
+  card:
+    name: card-service
+    port: 8085
+    replicas: 2
+  frontend:
+    name: frontend
+    port: 3000
+    replicas: 2
+
+# Health check endpoints
+health_check_path: /health
+health_check_timeout: 30

@@ -1,0 +1,27 @@
+# Production Inventory
+[all:vars]
+env=prod
+docker_registry=registry.neobank.com
+
+[db]
+prod-db-01 ansible_host=10.0.1.10
+prod-db-02 ansible_host=10.0.1.11  # Standby
+
+[redis]
+prod-redis-01 ansible_host=10.0.1.20
+prod-redis-02 ansible_host=10.0.1.21  # Replica
+
+[backend]
+prod-backend-01 ansible_host=10.0.2.10
+prod-backend-02 ansible_host=10.0.2.11
+prod-backend-03 ansible_host=10.0.2.12
+
+[frontend]
+prod-frontend-01 ansible_host=10.0.3.10
+prod-frontend-02 ansible_host=10.0.3.11
+
+[neobank:children]
+db
+redis
+backend
+frontend

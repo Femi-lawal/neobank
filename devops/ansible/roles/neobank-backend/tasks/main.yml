@@ -1,0 +1,73 @@
+---
+# NeoBank Backend Role - Deploy microservices
+
+- name: Create application directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
+    mode: "0755"
+  loop:
+    - /opt/neobank
+    - /opt/neobank/logs
+    - /opt/neobank/config
+    - /var/log/neobank
+
+- name: Copy service configuration files
+  template:
+    src: "{{ item.name }}.env.j2"
+    dest: "/opt/neobank/config/{{ item.name }}.env"
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
+    mode: "0600"
+  loop: "{{ services | dict2items | map(attribute='value') | list }}"
+  notify: Restart services
+
+- name: Pull Docker images for backend services
+  docker_image:
+    name: "{{ docker_registry }}/{{ item.name }}"
+    tag: "{{ deploy_version | default('latest') }}"
+    source: pull
+    force_source: yes
+  loop: "{{ services | dict2items | map(attribute='value') | list }}"
+  when: item.name != 'frontend'
+
+- name: Deploy backend services
+  docker_container:
+    name: "{{ item.name }}"
+    image: "{{ docker_registry }}/{{ item.name }}:{{ deploy_version | default('latest') }}"
+    state: started
+    restart_policy: unless-stopped
+    ports:
+      - "{{ item.port }}:{{ item.port }}"
+    env_file: "/opt/neobank/config/{{ item.name }}.env"
+    networks:
+      - name: neobank_network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--spider",
+          "-q",
+          "http://localhost:{{ item.port }}{{ health_check_path }}",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+  loop: "{{ services | dict2items | map(attribute='value') | list }}"
+  when: item.name != 'frontend'
+
+- name: Wait for services to be healthy
+  uri:
+    url: "http://localhost:{{ item.port }}{{ health_check_path }}"
+    method: GET
+    status_code: 200
+  register: result
+  until: result.status == 200
+  retries: 10
+  delay: 5
+  loop: "{{ services | dict2items | map(attribute='value') | list }}"
+  when: item.name != 'frontend'

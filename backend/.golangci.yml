@@ -1,0 +1,131 @@
+# golangci-lint configuration for NeoBank
+# Run: golangci-lint run ./...
+
+run:
+  timeout: 5m
+  tests: true
+  skip-dirs:
+    - vendor
+
+output:
+  format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
+
+linters:
+  enable:
+    # Default linters
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    # Additional quality linters
+    - bodyclose # Check HTTP response body is closed
+    - dogsled # Check for excessive blank identifiers
+    - dupl # Code clone detection
+    - exportloopref # Check for exported loop variable references
+    - gocognit # Cognitive complexity
+    - goconst # Find repeated strings that could be constants
+    - gocritic # Comprehensive linter
+    - gocyclo # Cyclomatic complexity
+    - gofmt # Code formatting
+    - goimports # Import formatting
+    - goprintffuncname # Printf-like function naming
+    - gosec # Security checks
+    - misspell # Spelling mistakes
+    - nakedret # Naked returns in functions
+    - nilerr # Return nil after checking error
+    - noctx # HTTP requests without context
+    - prealloc # Slice preallocation
+    - predeclared # Shadowing predeclared identifiers
+    - revive # Fast, configurable, extensible linter
+    - unconvert # Unnecessary type conversions
+    - unparam # Unused function parameters
+    - whitespace # Whitespace issues
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+
+  govet:
+    check-shadowing: true
+    enable-all: true
+
+  gocyclo:
+    min-complexity: 15
+
+  gocognit:
+    min-complexity: 20
+
+  dupl:
+    threshold: 100
+
+  goconst:
+    min-len: 3
+    min-occurrences: 3
+
+  misspell:
+    locale: US
+
+  revive:
+    rules:
+      - name: blank-imports
+      - name: context-as-argument
+      - name: context-keys-type
+      - name: dot-imports
+      - name: error-return
+      - name: error-strings
+      - name: error-naming
+      - name: exported
+      - name: increment-decrement
+      - name: indent-error-flow
+      - name: package-comments
+      - name: range
+      - name: receiver-naming
+      - name: time-naming
+      - name: unexported-return
+      - name: var-declaration
+      - name: var-naming
+
+  gosec:
+    excludes:
+      - G104 # Audit errors not checked (defer close)
+    config:
+      global:
+        audit: enabled
+
+issues:
+  exclude-use-default: false
+  max-issues-per-linter: 50
+  max-same-issues: 10
+
+  exclude-rules:
+    # Ignore long lines in tests
+    - path: _test\.go
+      linters:
+        - dupl
+        - gocyclo
+        - gocognit
+
+    # Ignore magic numbers in tests
+    - path: _test\.go
+      text: "Magic number"
+
+    # Ignore missing comments on exported types in tests
+    - path: _test\.go
+      linters:
+        - revive
+      text: "exported"
+
+severity:
+  default-severity: warning
+  rules:
+    - linters:
+        - gosec
+      severity: error
+    - linters:
+        - govet
+      severity: error

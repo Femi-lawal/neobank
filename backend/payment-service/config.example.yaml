@@ -1,0 +1,38 @@
+# Payment Service Configuration
+# Copy to config.yaml and adjust values for your environment
+
+server:
+  port: 8083
+  mode: "debug" # debug, release, test
+
+database:
+  host: "localhost"
+  port: "5433"
+  user: "user"
+  password: "password"
+  name: "newbank_core"
+  ssl_mode: "disable"
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: "5m"
+
+kafka:
+  brokers:
+    - "localhost:9092"
+  topics:
+    payment_events: "payment.events"
+  producer:
+    acks: "all"
+    retries: 3
+
+services:
+  ledger_url: "http://localhost:8082"
+  identity_url: "http://localhost:8081"
+
+rate_limit:
+  enabled: true
+  requests_per_minute: 100
+
+logging:
+  level: "info"
+  format: "json"

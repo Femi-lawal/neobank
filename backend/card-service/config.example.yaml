@@ -1,0 +1,29 @@
+# Card Service Configuration
+# Copy to config.yaml and adjust values for your environment
+
+server:
+  port: 8085
+  mode: "debug" # debug, release, test
+
+database:
+  host: "localhost"
+  port: "5433"
+  user: "user"
+  password: "password"
+  name: "newbank_core"
+  ssl_mode: "disable"
+  max_open_conns: 10
+  max_idle_conns: 5
+  conn_max_lifetime: "5m"
+
+card:
+  number_prefix: "4532" # Visa prefix
+  default_limit: 10000.00
+  virtual_card_expiry_years: 3
+
+encryption:
+  key: "your-32-byte-encryption-key-here" # AES-256 key
+
+logging:
+  level: "info"
+  format: "json"

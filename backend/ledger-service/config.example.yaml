@@ -1,0 +1,36 @@
+# Ledger Service Configuration
+# Copy to config.yaml and adjust values for your environment
+
+server:
+  port: 8082
+  mode: "debug" # debug, release, test
+
+database:
+  host: "localhost"
+  port: "5433"
+  user: "user"
+  password: "password"
+  name: "newbank_core"
+  ssl_mode: "disable"
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: "5m"
+
+redis:
+  addr: "localhost:6379"
+  password: ""
+  db: 0
+  pool_size: 10
+  cache_ttl: "5m"
+
+kafka:
+  brokers:
+    - "localhost:9092"
+  consumer_group: "ledger-service"
+  topics:
+    payment_events: "payment.events"
+    ledger_events: "ledger.events"
+
+logging:
+  level: "info"
+  format: "json"

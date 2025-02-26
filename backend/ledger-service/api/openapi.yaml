@@ -1,0 +1,227 @@
+openapi: 3.0.3
+info:
+  title: NeoBank Ledger API
+  description: Account and transaction management service for NeoBank
+  version: 1.0.0
+  contact:
+    name: NeoBank Team
+    email: api@neobank.com
+
+servers:
+  - url: http://localhost:8082
+    description: Development server
+  - url: https://api.neobank.com/ledger
+    description: Production server
+
+tags:
+  - name: Accounts
+    description: Account management
+  - name: Transactions
+    description: Transaction operations
+
+paths:
+  /api/v1/accounts:
+    get:
+      tags: [Accounts]
+      summary: List user accounts
+      operationId: listAccounts
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: List of accounts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Account"
+        "401":
+          description: Unauthorized
+
+    post:
+      tags: [Accounts]
+      summary: Create a new account
+      operationId: createAccount
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAccountRequest"
+      responses:
+        "201":
+          description: Account created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+        "400":
+          description: Invalid request
+
+  /api/v1/accounts/{id}:
+    get:
+      tags: [Accounts]
+      summary: Get account by ID
+      operationId: getAccount
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Account details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+        "404":
+          description: Account not found
+
+  /api/v1/accounts/{id}/balance:
+    get:
+      tags: [Accounts]
+      summary: Get account balance
+      operationId: getAccountBalance
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Account balance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Balance"
+
+  /api/v1/transactions:
+    post:
+      tags: [Transactions]
+      summary: Create a transaction
+      operationId: createTransaction
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTransactionRequest"
+      responses:
+        "201":
+          description: Transaction created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+
+  /health:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: Service is healthy
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Account:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        account_type:
+          type: string
+          enum: [CHECKING, SAVINGS, INVESTMENT]
+        currency:
+          type: string
+          example: USD
+        balance:
+          type: string
+          example: "1000.00"
+        created_at:
+          type: string
+          format: date-time
+
+    CreateAccountRequest:
+      type: object
+      required: [account_type, currency]
+      properties:
+        account_type:
+          type: string
+          enum: [CHECKING, SAVINGS, INVESTMENT]
+        currency:
+          type: string
+          default: USD
+
+    Balance:
+      type: object
+      properties:
+        account_id:
+          type: string
+          format: uuid
+        balance:
+          type: string
+        currency:
+          type: string
+
+    Transaction:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        description:
+          type: string
+        postings:
+          type: array
+          items:
+            $ref: "#/components/schemas/Posting"
+        created_at:
+          type: string
+          format: date-time
+
+    Posting:
+      type: object
+      properties:
+        account_id:
+          type: string
+          format: uuid
+        amount:
+          type: string
+        direction:
+          type: integer
+          description: "1 for credit, -1 for debit"
+
+    CreateTransactionRequest:
+      type: object
+      required: [description, postings]
+      properties:
+        description:
+          type: string
+        postings:
+          type: array
+          items:
+            $ref: "#/components/schemas/Posting"

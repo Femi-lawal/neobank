@@ -1,0 +1,210 @@
+openapi: 3.0.3
+info:
+  title: NeoBank Product API
+  description: Product catalog service for NeoBank
+  version: 1.0.0
+  contact:
+    name: NeoBank Team
+    email: api@neobank.com
+
+servers:
+  - url: http://localhost:8084
+    description: Development server
+  - url: https://api.neobank.com/product
+    description: Production server
+
+tags:
+  - name: Products
+    description: Banking product catalog
+
+paths:
+  /api/v1/products:
+    get:
+      tags: [Products]
+      summary: List all products
+      operationId: listProducts
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [CHECKING, SAVINGS, INVESTMENT, CREDIT]
+        - name: active
+          in: query
+          schema:
+            type: boolean
+            default: true
+      responses:
+        "200":
+          description: List of products
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Product"
+
+    post:
+      tags: [Products]
+      summary: Create a product (admin only)
+      operationId: createProduct
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProductRequest"
+      responses:
+        "201":
+          description: Product created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "403":
+          description: Admin access required
+
+  /api/v1/products/{id}:
+    get:
+      tags: [Products]
+      summary: Get product by ID
+      operationId: getProduct
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Product details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "404":
+          description: Product not found
+
+    put:
+      tags: [Products]
+      summary: Update a product (admin only)
+      operationId: updateProduct
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProductRequest"
+      responses:
+        "200":
+          description: Product updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+
+    delete:
+      tags: [Products]
+      summary: Delete a product (admin only)
+      operationId: deleteProduct
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Product deleted
+        "404":
+          description: Product not found
+
+  /health:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: Service is healthy
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Product:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Premium Checking
+        description:
+          type: string
+        type:
+          type: string
+          enum: [CHECKING, SAVINGS, INVESTMENT, CREDIT]
+        features:
+          type: array
+          items:
+            type: string
+        active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    CreateProductRequest:
+      type: object
+      required: [name, type]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        description:
+          type: string
+          maxLength: 500
+        type:
+          type: string
+          enum: [CHECKING, SAVINGS, INVESTMENT, CREDIT]
+        features:
+          type: array
+          items:
+            type: string
+        active:
+          type: boolean
+          default: true
+
+    UpdateProductRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        features:
+          type: array
+          items:
+            type: string
+        active:
+          type: boolean

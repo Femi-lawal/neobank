@@ -1,0 +1,182 @@
+openapi: 3.0.3
+info:
+  title: NeoBank Card API
+  description: Card management service for NeoBank
+  version: 1.0.0
+  contact:
+    name: NeoBank Team
+    email: api@neobank.com
+
+servers:
+  - url: http://localhost:8085
+    description: Development server
+  - url: https://api.neobank.com/card
+    description: Production server
+
+tags:
+  - name: Cards
+    description: Card issuance and management
+
+paths:
+  /api/v1/cards:
+    get:
+      tags: [Cards]
+      summary: List user's cards
+      operationId: listCards
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: List of cards
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Card"
+        "401":
+          description: Unauthorized
+
+    post:
+      tags: [Cards]
+      summary: Issue a new card
+      operationId: issueCard
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IssueCardRequest"
+      responses:
+        "201":
+          description: Card issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Card"
+        "400":
+          description: Invalid request
+        "404":
+          description: Account not found
+
+  /api/v1/cards/{id}:
+    get:
+      tags: [Cards]
+      summary: Get card by ID
+      operationId: getCard
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Card details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Card"
+        "404":
+          description: Card not found
+
+  /api/v1/cards/{id}/block:
+    post:
+      tags: [Cards]
+      summary: Block a card
+      operationId: blockCard
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Card blocked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Card"
+        "404":
+          description: Card not found
+
+  /api/v1/cards/{id}/unblock:
+    post:
+      tags: [Cards]
+      summary: Unblock a card
+      operationId: unblockCard
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Card unblocked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Card"
+
+  /health:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: Service is healthy
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Card:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        account_id:
+          type: string
+          format: uuid
+        card_number:
+          type: string
+          description: Masked card number (last 4 digits visible)
+          example: "************1234"
+        expiration_date:
+          type: string
+          example: "12/27"
+        status:
+          type: string
+          enum: [ACTIVE, BLOCKED, INACTIVE, EXPIRED]
+        created_at:
+          type: string
+          format: date-time
+
+    IssueCardRequest:
+      type: object
+      required: [account_id]
+      properties:
+        account_id:
+          type: string
+          format: uuid
+          description: Account to link card to

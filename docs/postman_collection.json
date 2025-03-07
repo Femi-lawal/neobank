@@ -1,0 +1,279 @@
+{
+    "info": {
+        "name": "NeoBank API",
+        "description": "Collection of NeoBank API endpoints for testing",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://localhost"
+        },
+        {
+            "key": "token",
+            "value": ""
+        }
+    ],
+    "item": [
+        {
+            "name": "Identity Service",
+            "item": [
+                {
+                    "name": "Register User",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": "{{base_url}}:8081/register",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"test@example.com\",\n  \"password\": \"SecurePass123!\",\n  \"first_name\": \"John\",\n  \"last_name\": \"Doe\"\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Login",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": "{{base_url}}:8081/login",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"test@example.com\",\n  \"password\": \"SecurePass123!\"\n}"
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "var jsonData = pm.response.json();",
+                                    "pm.collectionVariables.set('token', jsonData.token);"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Get Profile",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}:8081/profile"
+                    }
+                },
+                {
+                    "name": "Health Check",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}:8081/health"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Ledger Service",
+            "item": [
+                {
+                    "name": "List Accounts",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}:8082/api/v1/accounts"
+                    }
+                },
+                {
+                    "name": "Create Account",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}:8082/api/v1/accounts",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"account_type\": \"CHECKING\",\n  \"currency\": \"USD\"\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Get Account",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}:8082/api/v1/accounts/:id"
+                    }
+                },
+                {
+                    "name": "Health Check",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}:8082/health"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Payment Service",
+            "item": [
+                {
+                    "name": "Make Transfer",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}:8083/api/v1/transfer",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"from_account_id\": \"account-uuid-1\",\n  \"to_account_id\": \"account-uuid-2\",\n  \"amount\": \"100.00\",\n  \"currency\": \"USD\",\n  \"description\": \"Test transfer\"\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "List Payments",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}:8083/api/v1/payments"
+                    }
+                },
+                {
+                    "name": "Health Check",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}:8083/health"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Product Service",
+            "item": [
+                {
+                    "name": "List Products",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}:8084/api/v1/products"
+                    }
+                },
+                {
+                    "name": "Get Product",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}:8084/api/v1/products/:id"
+                    }
+                },
+                {
+                    "name": "Health Check",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}:8084/health"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Card Service",
+            "item": [
+                {
+                    "name": "List Cards",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}:8085/api/v1/cards"
+                    }
+                },
+                {
+                    "name": "Issue Card",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}:8085/api/v1/cards",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"account_id\": \"account-uuid\"\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Block Card",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}:8085/api/v1/cards/:id/block"
+                    }
+                },
+                {
+                    "name": "Health Check",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}:8085/health"
+                    }
+                }
+            ]
+        }
+    ]
+}

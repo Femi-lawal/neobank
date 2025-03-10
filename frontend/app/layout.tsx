@@ -3,6 +3,8 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import LayoutWrapper from './LayoutWrapper';
 import { ThemeProvider } from './context/ThemeContext';
+import { ToastProvider } from './components/Toast';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 
@@ -19,10 +21,15 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className} suppressHydrationWarning>
-        <ThemeProvider>
-          <LayoutWrapper>{children}</LayoutWrapper>
-        </ThemeProvider>
+        <ErrorBoundary>
+          <ThemeProvider>
+            <ToastProvider>
+              <LayoutWrapper>{children}</LayoutWrapper>
+            </ToastProvider>
+          </ThemeProvider>
+        </ErrorBoundary>
       </body>
     </html>
   );
 }
+

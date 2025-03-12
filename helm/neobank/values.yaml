@@ -1,0 +1,161 @@
+# Default values for neobank
+replicaCount: 2
+
+image:
+  registry: ""
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+# Global settings
+global:
+  environment: production
+
+# Service configurations
+services:
+  identity:
+    enabled: true
+    port: 8081
+    replicas: 2
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
+
+  ledger:
+    enabled: true
+    port: 8082
+    replicas: 2
+    resources:
+      requests:
+        cpu: 200m
+        memory: 256Mi
+      limits:
+        cpu: 1000m
+        memory: 512Mi
+
+  payment:
+    enabled: true
+    port: 8083
+    replicas: 2
+    resources:
+      requests:
+        cpu: 150m
+        memory: 192Mi
+      limits:
+        cpu: 750m
+        memory: 384Mi
+
+  product:
+    enabled: true
+    port: 8084
+    replicas: 2
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
+
+  card:
+    enabled: true
+    port: 8085
+    replicas: 2
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
+
+  frontend:
+    enabled: true
+    port: 3000
+    replicas: 2
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: neobank.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: frontend
+        - path: /api/identity
+          pathType: Prefix
+          service: identity
+        - path: /api/ledger
+          pathType: Prefix
+          service: ledger
+        - path: /api/payment
+          pathType: Prefix
+          service: payment
+        - path: /api/product
+          pathType: Prefix
+          service: product
+        - path: /api/card
+          pathType: Prefix
+          service: card
+  tls:
+    - secretName: neobank-tls
+      hosts:
+        - neobank.example.com
+
+# PostgreSQL
+postgresql:
+  enabled: true
+  auth:
+    database: newbank_core
+    username: neobank
+    existingSecret: neobank-db-credentials
+  primary:
+    persistence:
+      size: 10Gi
+
+# Redis
+redis:
+  enabled: true
+  auth:
+    enabled: false
+  master:
+    persistence:
+      size: 1Gi
+
+# Secrets (reference external secrets)
+secrets:
+  jwtSecret:
+    existingSecret: neobank-jwt
+    key: secret
+  dbCredentials:
+    existingSecret: neobank-db-credentials
+
+# Monitoring
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+
+# Autoscaling
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80

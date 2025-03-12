@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: neobank-config
+  labels:
+    app.kubernetes.io/name: neobank
+data:
+  DB_HOST: "{{ .Release.Name }}-postgresql"
+  DB_PORT: "5432"
+  DB_NAME: "{{ .Values.postgresql.auth.database }}"
+  REDIS_ADDR: "{{ .Release.Name }}-redis-master:6379"
+  KAFKA_BROKERS: "{{ .Release.Name }}-kafka:9092"
+  ENVIRONMENT: "{{ .Values.global.environment }}"

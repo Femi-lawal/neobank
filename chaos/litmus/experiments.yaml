@@ -1,0 +1,75 @@
+apiVersion: litmuschaos.io/v1alpha1
+kind: ChaosEngine
+metadata:
+  name: neobank-pod-chaos
+  namespace: neobank
+spec:
+  engineState: "active"
+  appinfo:
+    appns: "neobank"
+    applabel: "app=identity-service"
+    appkind: "deployment"
+  chaosServiceAccount: litmus-admin
+  experiments:
+    - name: pod-delete
+      spec:
+        components:
+          env:
+            - name: TOTAL_CHAOS_DURATION
+              value: "30"
+            - name: CHAOS_INTERVAL
+              value: "10"
+            - name: FORCE
+              value: "false"
+            - name: PODS_AFFECTED_PERC
+              value: "50"
+---
+apiVersion: litmuschaos.io/v1alpha1
+kind: ChaosEngine
+metadata:
+  name: neobank-network-chaos
+  namespace: neobank
+spec:
+  engineState: "active"
+  appinfo:
+    appns: "neobank"
+    applabel: "app=ledger-service"
+    appkind: "deployment"
+  chaosServiceAccount: litmus-admin
+  experiments:
+    - name: pod-network-latency
+      spec:
+        components:
+          env:
+            - name: NETWORK_INTERFACE
+              value: "eth0"
+            - name: NETWORK_LATENCY
+              value: "300"
+            - name: TOTAL_CHAOS_DURATION
+              value: "60"
+            - name: CONTAINER_RUNTIME
+              value: "containerd"
+---
+apiVersion: litmuschaos.io/v1alpha1
+kind: ChaosEngine
+metadata:
+  name: neobank-cpu-stress
+  namespace: neobank
+spec:
+  engineState: "active"
+  appinfo:
+    appns: "neobank"
+    applabel: "app=payment-service"
+    appkind: "deployment"
+  chaosServiceAccount: litmus-admin
+  experiments:
+    - name: pod-cpu-hog
+      spec:
+        components:
+          env:
+            - name: CPU_CORES
+              value: "1"
+            - name: TOTAL_CHAOS_DURATION
+              value: "60"
+            - name: CPU_LOAD
+              value: "80"

@@ -1,0 +1,170 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: identity-service
+  description: User authentication and identity management service
+  annotations:
+    backstage.io/techdocs-ref: dir:../../backend/identity-service
+    github.com/project-slug: Femi-lawal/neobank
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8081"
+    backstage.io/kubernetes-id: identity-service
+  tags:
+    - go
+    - backend
+    - authentication
+  links:
+    - url: http://localhost:8081/health
+      title: Health Check
+    - url: http://localhost:8081/swagger
+      title: API Docs
+spec:
+  type: service
+  lifecycle: production
+  owner: platform-team
+  system: neobank-platform
+  providesApis:
+    - identity-api
+  dependsOn:
+    - resource:neobank-postgres
+    - resource:neobank-redis
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: identity-api
+  description: Identity service REST API
+spec:
+  type: openapi
+  lifecycle: production
+  owner: platform-team
+  definition:
+    $text: ../../backend/identity-service/api/openapi.yaml
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: ledger-service
+  description: Account and transaction ledger management
+  annotations:
+    github.com/project-slug: Femi-lawal/neobank
+    prometheus.io/scrape: "true"
+  tags:
+    - go
+    - backend
+    - ledger
+    - financial
+spec:
+  type: service
+  lifecycle: production
+  owner: platform-team
+  system: neobank-platform
+  providesApis:
+    - ledger-api
+  dependsOn:
+    - component:identity-service
+    - resource:neobank-postgres
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: payment-service
+  description: Payment processing and money transfers
+  tags:
+    - go
+    - backend
+    - payments
+    - critical
+spec:
+  type: service
+  lifecycle: production
+  owner: platform-team
+  system: neobank-platform
+  dependsOn:
+    - component:ledger-service
+    - resource:neobank-kafka
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: product-service
+  description: Banking products catalog
+  tags:
+    - go
+    - backend
+    - catalog
+spec:
+  type: service
+  lifecycle: production
+  owner: platform-team
+  system: neobank-platform
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: card-service
+  description: Card issuance and management
+  tags:
+    - go
+    - backend
+    - cards
+    - pci
+spec:
+  type: service
+  lifecycle: production
+  owner: platform-team
+  system: neobank-platform
+  dependsOn:
+    - component:identity-service
+    - component:ledger-service
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: neobank-frontend
+  description: NeoBank web application
+  tags:
+    - nextjs
+    - react
+    - frontend
+spec:
+  type: website
+  lifecycle: production
+  owner: platform-team
+  system: neobank-platform
+  dependsOn:
+    - component:identity-service
+    - component:ledger-service
+    - component:payment-service
+    - component:card-service
+    - component:product-service
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: neobank-postgres
+  description: PostgreSQL database cluster
+spec:
+  type: database
+  owner: platform-team
+  system: neobank-platform
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: neobank-redis
+  description: Redis cache cluster
+spec:
+  type: cache
+  owner: platform-team
+  system: neobank-platform
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: neobank-kafka
+  description: Kafka message broker
+spec:
+  type: message-queue
+  owner: platform-team
+  system: neobank-platform

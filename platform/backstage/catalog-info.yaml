@@ -1,0 +1,34 @@
+apiVersion: backstage.io/v1alpha1
+kind: Location
+metadata:
+  name: neobank-catalog
+  description: NeoBank service catalog
+spec:
+  targets:
+    - ./services/identity-service.yaml
+    - ./services/ledger-service.yaml
+    - ./services/payment-service.yaml
+    - ./services/product-service.yaml
+    - ./services/card-service.yaml
+    - ./services/frontend.yaml
+    - ./systems/neobank-platform.yaml
+    - ./domains/banking.yaml
+---
+apiVersion: backstage.io/v1alpha1
+kind: Domain
+metadata:
+  name: banking
+  description: Digital banking domain
+spec:
+  owner: platform-team
+---
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: neobank-platform
+  description: NeoBank digital banking platform
+  annotations:
+    backstage.io/techdocs-ref: dir:.
+spec:
+  owner: platform-team
+  domain: banking

@@ -1,7 +1,6 @@
 package service
 
 import (
-	"errors"
 	"sync"
 	"time"
 )
@@ -116,8 +115,7 @@ func (al *AccountLockout) GetLockoutInfo(identifier string) (attempts int, locke
 	return info.attempts, info.lockedUntil, nil
 }
 
-// ErrAccountLocked is returned when an account is locked
-var ErrAccountLocked = errors.New("account is temporarily locked due to too many failed attempts")
+// ErrAccountLocked is defined in auth_service.go
 
 // Cleanup removes expired entries to prevent memory leaks
 func (al *AccountLockout) Cleanup() {

@@ -15,10 +15,25 @@ spec:
       labels:
         app: identity-service
     spec:
+      # INF-001: Pod security context
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: identity-service
           image: neobank/identity-service:latest
           imagePullPolicy: Always
+          # INF-001: Container security context
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
           ports:
             - containerPort: 8081
           env:
@@ -54,6 +69,14 @@ spec:
                 secretKeyRef:
                   name: neobank-secrets
                   key: jwt-secret
+          # INF-010: Add startup probe
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 30 # Allow up to 2.5 minutes for startup
           readinessProbe:
             httpGet:
               path: /health
@@ -73,6 +96,13 @@ spec:
             limits:
               memory: "256Mi"
               cpu: "200m"
+          # Volume mount for tmp if needed
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

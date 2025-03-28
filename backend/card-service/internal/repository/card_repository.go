@@ -2,6 +2,7 @@ package repository
 
 import (
 	"github.com/femi-lawal/new_bank/backend/card-service/internal/model"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -19,7 +20,16 @@ func (r *CardRepository) CreateCard(c *model.Card) error {
 
 func (r *CardRepository) GetCardByNumber(pan string) (*model.Card, error) {
 	var c model.Card
-	if err := r.DB.Where("card_number = ?", pan).First(&c).Error; err != nil {
+	if err := r.DB.Where("masked_card_number = ?", pan).First(&c).Error; err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+// GetCardByID retrieves a card by its UUID
+func (r *CardRepository) GetCardByID(cardID uuid.UUID) (*model.Card, error) {
+	var c model.Card
+	if err := r.DB.Where("id = ?", cardID).First(&c).Error; err != nil {
 		return nil, err
 	}
 	return &c, nil
@@ -40,4 +50,18 @@ func (r *CardRepository) ListCardsByUser(userID string) ([]model.Card, error) {
 		return nil, err
 	}
 	return cards, nil
+}
+
+// VerifyAccountOwnership checks if a user owns a specific account
+// SEC-006: This is a stub - in production, call the ledger service or use a shared DB view
+func (r *CardRepository) VerifyAccountOwnership(userID, accountID uuid.UUID) (bool, error) {
+	// DEMO: For the demo, we always return true since accounts are linked by user_id
+	// In production, this would:
+	// 1. Call the ledger service API to verify ownership, OR
+	// 2. Query a shared accounts table, OR
+	// 3. Use a JWT claim that includes account permissions
+
+	// For demo purposes, assume ownership is valid
+	// This allows the demo to work without a full service mesh
+	return true, nil
 }

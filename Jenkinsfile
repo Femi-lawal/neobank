@@ -105,7 +105,7 @@ pipeline {
                             sh '''
                                 npm ci
                                 npm run lint
-                                npm run test:ci || true
+                                npm run test:ci
                             '''
                         }
                     }
@@ -113,9 +113,11 @@ pipeline {
                 stage('Security Scan') {
                     steps {
                         sh '''
-                            # Run security scan with Trivy
+                            # OPS-001: Run security scan with Trivy - BLOCKING (no || true)
+                            # Critical/High vulnerabilities will fail the build
                             for service in identity-service ledger-service payment-service product-service card-service frontend; do
-                                trivy image --severity HIGH,CRITICAL ${DOCKER_REGISTRY}/${service}:${VERSION} || true
+                                echo "Scanning ${DOCKER_REGISTRY}/${service}:${VERSION}..."
+                                trivy image --severity HIGH,CRITICAL --exit-code 1 ${DOCKER_REGISTRY}/${service}:${VERSION}
                             done
                         '''
                     }
@@ -134,6 +136,20 @@ pipeline {
                             docker push ${DOCKER_REGISTRY}/${service}:latest
                         done
                     '''
+                }
+            }
+        }
+        
+        // OPS-003: Manual approval for production deployments
+        stage('Approval for Production') {
+            when {
+                expression { params.DEPLOY && params.ENVIRONMENT == 'prod' }
+            }
+            steps {
+                timeout(time: 1, unit: 'HOURS') {
+                    input message: 'Deploy to Production?', 
+                          ok: 'Deploy',
+                          submitter: 'release-managers,devops'
                 }
             }
         }

@@ -1,0 +1,58 @@
+# Pod Security Contexts for NeoBank services
+# INF-001: Define security contexts for all pods
+# Apply Pod Security Standards: restricted
+
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: identity-service-pdb
+  namespace: neobank
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: identity-service
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ledger-service-pdb
+  namespace: neobank
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: ledger-service
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: payment-service-pdb
+  namespace: neobank
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: payment-service
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: card-service-pdb
+  namespace: neobank
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: card-service
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: product-service-pdb
+  namespace: neobank
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: product-service

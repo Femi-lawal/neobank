@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"strconv"
 	"sync"
 	"time"
 
@@ -125,9 +126,9 @@ func RateLimitWithConfig(config RateLimitConfig) gin.HandlerFunc {
 
 		allowed, limit, remaining, resetTime := limiter.allow(key)
 
-		// Set rate limit headers
-		c.Header("X-RateLimit-Limit", string(rune(limit)))
-		c.Header("X-RateLimit-Remaining", string(rune(remaining)))
+		// Set rate limit headers (BE-006: use strconv.Itoa for proper int-to-string conversion)
+		c.Header("X-RateLimit-Limit", strconv.Itoa(limit))
+		c.Header("X-RateLimit-Remaining", strconv.Itoa(remaining))
 		c.Header("X-RateLimit-Reset", resetTime.Format(time.RFC3339))
 
 		if !allowed {
@@ -151,9 +152,9 @@ func RateLimitWithKeyFunc(config RateLimitConfig, keyFunc KeyFunc) gin.HandlerFu
 		key := keyFunc(c)
 		allowed, limit, remaining, resetTime := limiter.allow(key)
 
-		// Set rate limit headers
-		c.Header("X-RateLimit-Limit", string(rune(limit)))
-		c.Header("X-RateLimit-Remaining", string(rune(remaining)))
+		// Set rate limit headers (BE-006: use strconv.Itoa for proper int-to-string conversion)
+		c.Header("X-RateLimit-Limit", strconv.Itoa(limit))
+		c.Header("X-RateLimit-Remaining", strconv.Itoa(remaining))
 		c.Header("X-RateLimit-Reset", resetTime.Format(time.RFC3339))
 
 		if !allowed {

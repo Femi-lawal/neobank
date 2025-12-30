@@ -1,6 +1,6 @@
 module github.com/femi-lawal/new_bank/backend/ledger-service
 
-go 1.24.0
+go 1.22
 
 replace github.com/femi-lawal/new_bank/backend/shared-lib => ../shared-lib
 

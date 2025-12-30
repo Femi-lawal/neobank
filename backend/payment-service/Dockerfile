@@ -26,7 +26,8 @@ RUN apk --no-cache add ca-certificates tzdata
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
 COPY --from=builder /app/bin/payment-service .
-COPY payment-service/config.yaml ./config.yaml 2>/dev/null || true
+# Copy config (optional - file may not exist)
+# COPY payment-service/config.yaml ./config.yaml
 
 RUN chown -R appuser:appgroup /app
 USER appuser

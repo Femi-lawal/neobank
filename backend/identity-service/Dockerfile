@@ -36,8 +36,9 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 # Copy binary from builder
 COPY --from=builder /app/bin/identity-service .
 
-# Copy config (if exists)
-COPY identity-service/config.yaml ./config.yaml 2>/dev/null || true
+# Copy config (optional - file may not exist in all environments)
+# Note: This COPY is commented out as config.yaml is optional for demo
+# COPY identity-service/config.yaml ./config.yaml
 
 # Change ownership
 RUN chown -R appuser:appgroup /app

@@ -37,7 +37,8 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 COPY --from=builder /app/bin/ledger-service .
 
 # Copy config (if exists)
-COPY ledger-service/config.yaml ./config.yaml 2>/dev/null || true
+# Copy config (optional - file may not exist)
+# COPY ledger-service/config.yaml ./config.yaml
 
 # Change ownership
 RUN chown -R appuser:appgroup /app

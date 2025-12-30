@@ -86,7 +86,11 @@ jobs:
           DB_NAME: newbank_core
           REDIS_ADDR: localhost:6379
         run: |
-          go test ./... -v -race -coverprofile=coverage.out -covermode=atomic
+          # Test each module in the workspace separately
+          for module in shared-lib identity-service ledger-service payment-service product-service card-service; do
+            echo "Testing $module..."
+            cd $module && go test ./... -v -race -coverprofile=coverage.out -covermode=atomic && cd ..
+          done
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4

@@ -1,6 +1,6 @@
 module github.com/femi-lawal/new_bank/backend/payment-service
 
-go 1.25.5
+go 1.21
 
 replace github.com/femi-lawal/new_bank/backend/shared-lib => ../shared-lib
 

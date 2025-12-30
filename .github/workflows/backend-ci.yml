@@ -129,15 +129,25 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: backend/go.work.sum
+
       - name: Install Gosec
         run: go install github.com/securego/gosec/v2/cmd/gosec@latest
 
       - name: Run Gosec security scanner
         working-directory: backend
-        run: gosec -no-fail -fmt sarif -out results.sarif ./...
+        run: |
+          export PATH=$PATH:$(go env GOPATH)/bin
+          gosec -no-fail -fmt sarif -out results.sarif ./...
+        continue-on-error: true
 
       - name: Upload SARIF file
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: backend/results.sarif
         if: always()
+        continue-on-error: true

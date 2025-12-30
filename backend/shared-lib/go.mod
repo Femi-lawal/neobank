@@ -1,6 +1,6 @@
 module github.com/femi-lawal/new_bank/backend/shared-lib
 
-go 1.25.5
+go 1.21
 
 require (
 	github.com/gin-gonic/gin v1.10.0

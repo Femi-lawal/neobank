@@ -24,22 +24,35 @@ var (
 	ErrAccountLocked      = errors.New("account is temporarily locked due to too many failed attempts")
 )
 
+// Claims represents JWT claims for access tokens
+type Claims struct {
+	UserID string `json:"user_id"`
+	Email  string `json:"email"`
+	Role   string `json:"role"`
+	jwt.RegisteredClaims
+}
+
+// UserRepository interface for user data operations
 type UserRepository interface {
 	FindByEmail(email string) (*model.User, error)
+	FindByID(id string) (*model.User, error)
 	Create(user *model.User) error
+	UpdatePassword(userID string, hashedPassword string) error
 }
 
 type AuthService struct {
-	Repo           UserRepository
-	JWTSecret      []byte
-	AccountLockout *AccountLockout // SEC-011: Account lockout integration
+	Repo              UserRepository
+	JWTSecret         []byte
+	AccountLockout    *AccountLockout // SEC-011: Account lockout integration
+	accessTokenExpiry time.Duration   // Token expiry duration
 }
 
 func NewAuthService(repo UserRepository, secret string) *AuthService {
 	return &AuthService{
-		Repo:           repo,
-		JWTSecret:      []byte(secret),
-		AccountLockout: DefaultAccountLockout(), // SEC-011: Initialize lockout
+		Repo:              repo,
+		JWTSecret:         []byte(secret),
+		AccountLockout:    DefaultAccountLockout(), // SEC-011: Initialize lockout
+		accessTokenExpiry: AccessTokenExpiry,
 	}
 }
 
@@ -113,4 +126,18 @@ func (s *AuthService) Login(email, password string) (string, error) {
 	}
 
 	return tokenString, nil
+}
+
+// hashPassword hashes a password using bcrypt
+func (s *AuthService) hashPassword(password string) (string, error) {
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), BcryptCost)
+	if err != nil {
+		return "", err
+	}
+	return string(hashedPassword), nil
+}
+
+// verifyPassword verifies a password against a hash
+func (s *AuthService) verifyPassword(hashedPassword, password string) error {
+	return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password))
 }

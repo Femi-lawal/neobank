@@ -112,7 +112,7 @@ func (s *AuthService) ChangePassword(userID string, currentPassword string, newP
 	}
 
 	// Verify current password
-	if err := s.verifyPassword(user.Password, currentPassword); err != nil {
+	if err := s.verifyPassword(user.PasswordHash, currentPassword); err != nil {
 		return errors.New("current password is incorrect")
 	}
 

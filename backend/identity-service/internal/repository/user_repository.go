@@ -24,3 +24,17 @@ func (r *UserRepository) FindByEmail(email string) (*model.User, error) {
 	}
 	return &user, nil
 }
+
+// FindByID finds a user by their ID
+func (r *UserRepository) FindByID(id string) (*model.User, error) {
+	var user model.User
+	if err := r.DB.Where("id = ?", id).First(&user).Error; err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+// UpdatePassword updates a user's password hash
+func (r *UserRepository) UpdatePassword(userID string, hashedPassword string) error {
+	return r.DB.Model(&model.User{}).Where("id = ?", userID).Update("password_hash", hashedPassword).Error
+}

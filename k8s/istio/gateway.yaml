@@ -1,0 +1,55 @@
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: neobank-gateway
+  namespace: istio-system
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        - "*"
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: frontend-vs
+spec:
+  hosts:
+    - "*"
+  gateways:
+    - neobank-gateway
+  http:
+    - match:
+        - uri:
+            prefix: /api/payment
+      route:
+        - destination:
+            host: neobank-payment-service
+            port:
+              number: 8080
+    - match:
+        - uri:
+            prefix: /api/ledger
+      route:
+        - destination:
+            host: neobank-ledger-service
+            port:
+              number: 8080
+    - match:
+        - uri:
+            prefix: /api/auth
+      route:
+        - destination:
+            host: neobank-identity-service
+            port:
+              number: 8080
+    - route:
+        - destination:
+            host: neobank-frontend
+            port:
+              number: 3000

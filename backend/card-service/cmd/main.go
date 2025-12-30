@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"os"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/femi-lawal/new_bank/backend/shared-lib/pkg/logger"
 	"github.com/femi-lawal/new_bank/backend/shared-lib/pkg/metrics"
 	"github.com/femi-lawal/new_bank/backend/shared-lib/pkg/middleware"
+	"github.com/femi-lawal/new_bank/backend/shared-lib/pkg/tracing"
 	"github.com/gin-gonic/gin"
 )
 
@@ -23,6 +25,14 @@ func main() {
 	logger.InitLogger(serviceName, true)
 	slog.Info("Starting Card Service")
 
+	// Initialize Tracing
+	tp, err := tracing.InitTracing(context.Background(), tracing.DefaultConfig(serviceName))
+	if err != nil {
+		slog.Warn("Failed to initialize tracing", "error", err)
+	} else {
+		defer func() { _ = tp.Shutdown(context.Background()) }()
+	}
+
 	// Connect to Database
 	dbConfig := db.Config{
 		Host:     getEnv("DB_HOST", "localhost"),
@@ -30,7 +40,7 @@ func main() {
 		User:     getEnv("DB_USER", "user"),
 		Password: getEnv("DB_PASSWORD", "password"),
 		DBName:   getEnv("DB_NAME", "newbank_core"),
-		SSLMode:  "disable",
+		SSLMode:  getEnv("DB_SSLMODE", "disable"),
 	}
 
 	database, err := db.Connect(dbConfig)
@@ -50,7 +60,7 @@ func main() {
 	h := handler.NewCardHandler(svc)
 
 	// Get JWT secret
-	jwtSecret := getEnv("JWT_SECRET", "my-secret-key")
+	jwtSecret := requireEnv("JWT_SECRET")
 
 	// Setup Router
 	r := gin.Default()
@@ -60,6 +70,7 @@ func main() {
 	// ============================================
 	r.Use(apperrors.ErrorMiddleware())
 	r.Use(middleware.RequestLogger(serviceName))
+	r.Use(middleware.Tracing(serviceName))
 	r.Use(middleware.CORS())
 	r.Use(middleware.RateLimit())
 	r.Use(metrics.PrometheusMiddleware(serviceName))
@@ -97,4 +108,13 @@ func getEnv(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+// requireEnv returns the value of an environment variable or panics if not set.
+func requireEnv(key string) string {
+	if value, exists := os.LookupEnv(key); exists && value != "" {
+		return value
+	}
+	slog.Error("Required environment variable not set", "key", key)
+	panic("Required environment variable " + key + " is not set")
 }

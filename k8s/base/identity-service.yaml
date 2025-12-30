@@ -5,6 +5,13 @@ metadata:
   namespace: neobank
   labels:
     app: identity-service
+    app.kubernetes.io/name: identity-service
+    app.kubernetes.io/part-of: neobank
+    app.kubernetes.io/component: backend
+  annotations:
+    description: "Authentication and authorization service"
+    owner: "platform-team"
+    cost-center: "engineering"
 spec:
   replicas: 2
   selector:
@@ -15,6 +22,7 @@ spec:
       labels:
         app: identity-service
     spec:
+      serviceAccountName: identity-service-sa
       # INF-001: Pod security context
       securityContext:
         runAsNonRoot: true
@@ -26,7 +34,7 @@ spec:
       containers:
         - name: identity-service
           image: neobank/identity-service:latest
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           # INF-001: Container security context
           securityContext:
             allowPrivilegeEscalation: false
@@ -52,23 +60,28 @@ spec:
             - name: DB_USER
               valueFrom:
                 secretKeyRef:
-                  name: neobank-secrets
-                  key: db-user
+                  name: neobank-db-credentials
+                  key: username
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: neobank-secrets
-                  key: db-password
+                  name: neobank-db-credentials
+                  key: password
             - name: DB_NAME
               valueFrom:
-                secretKeyRef:
-                  name: neobank-secrets
-                  key: db-name
+                configMapKeyRef:
+                  name: neobank-config
+                  key: DB_NAME
+            - name: DB_SSLMODE
+              valueFrom:
+                configMapKeyRef:
+                  name: neobank-config
+                  key: DB_SSLMODE
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: neobank-secrets
-                  key: jwt-secret
+                  name: neobank-jwt
+                  key: secret
           # INF-010: Add startup probe
           startupProbe:
             httpGet:

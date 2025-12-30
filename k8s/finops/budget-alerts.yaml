@@ -1,0 +1,147 @@
+# Budget Alert Configurations for FinOps
+# Defines alerting rules for cost thresholds
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: budget-alert-rules
+  namespace: finops
+  labels:
+    app: finops
+    component: alerts
+data:
+  # Prometheus alerting rules for budget tracking
+  prometheus-alerts.yaml: |
+    groups:
+      - name: finops-budget-alerts
+        interval: 5m
+        rules:
+          # Daily budget warning
+          - alert: DailyBudgetWarning
+            expr: |
+              (sum(neobank:namespace:daily_cost{namespace="neobank"}) / 
+               sum(neobank:budget:daily_limit{namespace="neobank"})) > 0.8
+            for: 30m
+            labels:
+              severity: warning
+              team: finops
+            annotations:
+              summary: "NeoBank daily budget at 80%"
+              description: "Namespace {{ $labels.namespace }} has used 80% of daily budget"
+              runbook_url: "https://docs.neobank.io/runbooks/finops/budget-warning"
+          
+          # Daily budget critical
+          - alert: DailyBudgetCritical
+            expr: |
+              (sum(neobank:namespace:daily_cost{namespace="neobank"}) / 
+               sum(neobank:budget:daily_limit{namespace="neobank"})) > 0.95
+            for: 15m
+            labels:
+              severity: critical
+              team: finops
+            annotations:
+              summary: "NeoBank daily budget at 95%"
+              description: "Namespace {{ $labels.namespace }} is approaching daily budget limit"
+              runbook_url: "https://docs.neobank.io/runbooks/finops/budget-critical"
+          
+          # Service cost anomaly detection
+          - alert: ServiceCostAnomaly
+            expr: |
+              (neobank:service:hourly_cost - 
+               avg_over_time(neobank:service:hourly_cost[7d])) / 
+               stddev_over_time(neobank:service:hourly_cost[7d]) > 3
+            for: 1h
+            labels:
+              severity: warning
+              team: finops
+            annotations:
+              summary: "Service {{ $labels.service }} cost anomaly detected"
+              description: "Cost is 3 standard deviations above normal"
+          
+          # Idle resource detection
+          - alert: IdleResourcesDetected
+            expr: |
+              (sum by (pod, namespace) (rate(container_cpu_usage_seconds_total[1h])) /
+               sum by (pod, namespace) (container_spec_cpu_quota / 100000)) < 0.1
+            for: 6h
+            labels:
+              severity: info
+              team: finops
+            annotations:
+              summary: "Low CPU utilization detected"
+              description: "Pod {{ $labels.pod }} CPU usage below 10% for 6 hours"
+          
+          # Memory overprovisioning
+          - alert: MemoryOverProvisioned
+            expr: |
+              (sum by (pod, namespace) (container_memory_usage_bytes) /
+               sum by (pod, namespace) (container_spec_memory_limit_bytes)) < 0.3
+            for: 24h
+            labels:
+              severity: info
+              team: finops
+            annotations:
+              summary: "Memory overprovisioned"
+              description: "Pod {{ $labels.pod }} memory usage below 30% of limits"
+          
+          # Monthly budget tracking
+          - alert: MonthlyBudgetProjection
+            expr: |
+              predict_linear(neobank:namespace:daily_cost[7d], 
+                           (days_in_month(month()) - day_of_month()) * 86400) > 
+              neobank:budget:monthly_limit
+            for: 1d
+            labels:
+              severity: warning
+              team: finops
+            annotations:
+              summary: "Monthly budget projection exceeded"
+              description: "Current spend trend projects exceeding monthly budget"
+---
+# Budget thresholds ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: budget-thresholds
+  namespace: finops
+data:
+  budgets.yaml: |
+    # Monthly budgets per cost center (USD)
+    budgets:
+      neobank:
+        monthly: 5000
+        daily: 166
+        hourly: 7
+      
+      costCenters:
+        security:
+          monthly: 500
+          owner: security-team@neobank.io
+        core-banking:
+          monthly: 1000
+          owner: banking-team@neobank.io
+        transactions:
+          monthly: 800
+          owner: payments-team@neobank.io
+        card-operations:
+          monthly: 600
+          owner: cards-team@neobank.io
+        product-management:
+          monthly: 400
+          owner: product-team@neobank.io
+        customer-experience:
+          monthly: 300
+          owner: cx-team@neobank.io
+        infrastructure:
+          monthly: 1400
+          owner: platform-team@neobank.io
+
+    # Alert recipients
+    notifications:
+      slack:
+        channel: "#finops-alerts"
+        webhook: "${SLACK_WEBHOOK_URL}"
+      email:
+        recipients:
+          - finops@neobank.io
+          - platform-team@neobank.io

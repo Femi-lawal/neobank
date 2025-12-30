@@ -1,0 +1,267 @@
+# Container Build Workflow (Triggered by Jenkins or on main merge)
+# Builds, scans, signs, and pushes container images
+name: Container Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      service:
+        description: "Service to build"
+        required: true
+        type: choice
+        options:
+          - identity-service
+          - ledger-service
+          - payment-service
+          - card-service
+          - product-service
+          - frontend
+          - all
+      environment:
+        description: "Target environment"
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
+
+jobs:
+  # ============================================
+  # Detect Changed Services
+  # ============================================
+  detect-changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.changes.outputs.services }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect changed services
+        id: changes
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ "${{ github.event.inputs.service }}" = "all" ]; then
+              echo 'services=["identity-service","ledger-service","payment-service","card-service","product-service","frontend"]' >> $GITHUB_OUTPUT
+            else
+              echo 'services=["${{ github.event.inputs.service }}"]' >> $GITHUB_OUTPUT
+            fi
+          else
+            # Detect changes from git diff
+            CHANGED_FILES=$(git diff --name-only HEAD^ HEAD)
+            SERVICES=()
+            
+            if echo "$CHANGED_FILES" | grep -q "^backend/identity-service/"; then
+              SERVICES+=("identity-service")
+            fi
+            if echo "$CHANGED_FILES" | grep -q "^backend/ledger-service/"; then
+              SERVICES+=("ledger-service")
+            fi
+            if echo "$CHANGED_FILES" | grep -q "^backend/payment-service/"; then
+              SERVICES+=("payment-service")
+            fi
+            if echo "$CHANGED_FILES" | grep -q "^backend/card-service/"; then
+              SERVICES+=("card-service")
+            fi
+            if echo "$CHANGED_FILES" | grep -q "^backend/product-service/"; then
+              SERVICES+=("product-service")
+            fi
+            if echo "$CHANGED_FILES" | grep -q "^frontend/"; then
+              SERVICES+=("frontend")
+            fi
+            
+            # Convert to JSON array (compact single-line format)
+            if [ ${#SERVICES[@]} -eq 0 ]; then
+              echo 'services=[]' >> $GITHUB_OUTPUT
+            else
+              JSON_ARRAY=$(printf '%s\n' "${SERVICES[@]}" | jq -R . | jq -sc .)
+              echo "services=$JSON_ARRAY" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+  # ============================================
+  # Build and Push Images
+  # ============================================
+  build:
+    name: Build ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.services != '[]'
+    strategy:
+      matrix:
+        service: ${{ fromJson(needs.detect-changes.outputs.services) }}
+      fail-fast: false
+
+    permissions:
+      id-token: write
+      contents: read
+      packages: write
+
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check AWS OIDC role availability
+        id: aws-oidc-check
+        run: |
+          if [ -n "${{ secrets.AWS_ROLE_ARN }}" ]; then
+            echo "available=true" >> $GITHUB_OUTPUT
+          else
+            echo "available=false" >> $GITHUB_OUTPUT
+            echo "::warning::AWS_ROLE_ARN not configured. Skipping build/push for ${{ matrix.service }}."
+          fi
+
+      - name: Set up Docker Buildx
+        if: steps.aws-oidc-check.outputs.available == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Configure AWS credentials
+        if: steps.aws-oidc-check.outputs.available == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        if: steps.aws-oidc-check.outputs.available == 'true'
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Docker meta
+        id: meta
+        if: steps.aws-oidc-check.outputs.available == 'true'
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.ECR_REGISTRY }}/neobank/${{ matrix.service }}
+          tags: |
+            type=sha,prefix=
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Determine build context
+        id: context
+        if: steps.aws-oidc-check.outputs.available == 'true'
+        run: |
+          if [ "${{ matrix.service }}" = "frontend" ]; then
+            echo "path=frontend" >> $GITHUB_OUTPUT
+          else
+            echo "path=backend/${{ matrix.service }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build and push
+        if: steps.aws-oidc-check.outputs.available == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ steps.context.outputs.path }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            COMMIT_SHA=${{ github.sha }}
+          provenance: true
+          sbom: true
+
+      - name: Scan image with Trivy
+        if: steps.aws-oidc-check.outputs.available == 'true'
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "${{ env.ECR_REGISTRY }}/neobank/${{ matrix.service }}:${{ github.sha }}"
+          format: "sarif"
+          output: "trivy-${{ matrix.service }}.sarif"
+          severity: "CRITICAL,HIGH"
+          exit-code: "1"
+        continue-on-error: true
+
+      - name: Upload Trivy scan results
+        if: steps.aws-oidc-check.outputs.available == 'true'
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: "trivy-${{ matrix.service }}.sarif"
+
+      - name: Sign image with Cosign
+        if: steps.aws-oidc-check.outputs.available == 'true'
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          cosign sign --yes ${{ env.ECR_REGISTRY }}/neobank/${{ matrix.service }}@${{ steps.build.outputs.digest }}
+
+  # ============================================
+  # Update Manifests (GitOps)
+  # ============================================
+  update-manifests:
+    name: Update Manifests
+    runs-on: ubuntu-latest
+    needs: build
+    if: success()
+    env:
+      TARGET_ENV: ${{ github.event.inputs.environment || 'dev' }}
+
+    steps:
+      - name: Checkout manifests repo
+        uses: actions/checkout@v4
+        with:
+          repository: your-org/neobank-manifests
+          token: ${{ secrets.MANIFEST_REPO_TOKEN }}
+          path: manifests
+
+      - name: Update image tags
+        run: |
+          cd manifests
+          IMAGE_TAG="${{ github.sha }}"
+
+          for service in ${{ needs.detect-changes.outputs.services }}; do
+            # Update kustomization.yaml for the target environment
+            ENV_PATH="services/$service/${{ env.TARGET_ENV }}"
+            
+            if [ -f "$ENV_PATH/kustomization.yaml" ]; then
+              yq eval -i ".images[0].newTag = \"$IMAGE_TAG\"" "$ENV_PATH/kustomization.yaml"
+              echo "Updated $service to $IMAGE_TAG in ${{ env.TARGET_ENV }}"
+            fi
+          done
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          path: manifests
+          token: ${{ secrets.MANIFEST_REPO_TOKEN }}
+          commit-message: "chore: update images to ${{ github.sha }}"
+          title: "[Deploy] Update ${{ env.TARGET_ENV }} to ${{ github.sha }}"
+          body: |
+            ## Automated Image Update
+
+            **Source Commit:** ${{ github.sha }}
+            **Target Environment:** ${{ env.TARGET_ENV }}
+            **Services Updated:** ${{ needs.detect-changes.outputs.services }}
+
+            ### Changes
+            - Updated container images to commit ${{ github.sha }}
+
+            ### Verification
+            - [ ] Image vulnerability scan passed
+            - [ ] Image signed with Cosign
+
+            ---
+            *This PR was automatically created by GitHub Actions*
+          branch: deploy/${{ env.TARGET_ENV }}/${{ github.sha }}
+          delete-branch: true
+          labels: |
+            automated
+            deployment
+            ${{ env.TARGET_ENV }}

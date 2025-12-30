@@ -1,0 +1,86 @@
+# Istio Service Entry for external services
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: ServiceEntry
+metadata:
+  name: external-apis
+  namespace: neobank
+spec:
+  hosts:
+    - "api.stripe.com"
+    - "api.plaid.com"
+    - "api.sendgrid.com"
+  location: MESH_EXTERNAL
+  ports:
+    - number: 443
+      name: https
+      protocol: TLS
+  resolution: DNS
+---
+# Sidecar configuration for resource optimization
+apiVersion: networking.istio.io/v1alpha3
+kind: Sidecar
+metadata:
+  name: default
+  namespace: neobank
+spec:
+  egress:
+    - hosts:
+        - "./*"
+        - "istio-system/*"
+  outboundTrafficPolicy:
+    mode: REGISTRY_ONLY
+---
+# Telemetry configuration
+apiVersion: telemetry.istio.io/v1alpha1
+kind: Telemetry
+metadata:
+  name: neobank-telemetry
+  namespace: neobank
+spec:
+  accessLogging:
+    - providers:
+        - name: envoy
+      disabled: false
+  tracing:
+    - providers:
+        - name: "zipkin"
+      randomSamplingPercentage: 10.0
+      customTags:
+        service.name:
+          literal:
+            value: "neobank"
+        environment:
+          environment:
+            name: ENVIRONMENT
+            defaultValue: "development"
+  metrics:
+    - providers:
+        - name: prometheus
+      overrides:
+        - match:
+            metric: REQUEST_COUNT
+            mode: CLIENT_AND_SERVER
+          tagOverrides:
+            request_host:
+              operation: UPSERT
+            destination_service:
+              operation: UPSERT
+---
+# Request authentication for JWT validation
+apiVersion: security.istio.io/v1beta1
+kind: RequestAuthentication
+metadata:
+  name: jwt-auth
+  namespace: neobank
+spec:
+  selector:
+    matchLabels:
+      app: frontend
+  jwtRules:
+    - issuer: "https://auth.neobank.io"
+      audiences:
+        - "neobank-api"
+      jwksUri: "https://auth.neobank.io/.well-known/jwks.json"
+      forwardOriginalToken: true
+      outputPayloadToHeader: "x-jwt-payload"

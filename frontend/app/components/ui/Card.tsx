@@ -11,13 +11,8 @@ interface CardProps {
 }
 
 export function Card({ children, className = '', delay = 0, ...props }: CardProps) {
-    let isDark = true;
-    try {
-        const { theme } = useTheme();
-        isDark = theme === 'dark';
-    } catch {
-        // ThemeProvider not ready
-    }
+    const { theme } = useTheme();
+    const isDark = theme === 'dark';
 
     return (
         <motion.div

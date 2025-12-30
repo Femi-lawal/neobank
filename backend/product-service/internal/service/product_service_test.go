@@ -43,29 +43,23 @@ func (m *MockProductRepository) DeleteProduct(id string) error {
 }
 
 func TestProductService_CreateProduct(t *testing.T) {
-	mockRepo := new(MockProductRepository)
-	svc := NewProductService(nil) // Will test with mock
-
 	// Test product model creation
 	product := &model.Product{
-		Name:        "Premium Account",
-		Description: "High-yield savings account",
-		Type:        "SAVINGS",
-		Active:      true,
+		Name: "Premium Account",
+		Type: model.Savings,
 	}
 
 	assert.Equal(t, "Premium Account", product.Name)
-	assert.Equal(t, "SAVINGS", product.Type)
-	assert.True(t, product.Active)
+	assert.Equal(t, model.Savings, product.Type)
 }
 
 func TestProductService_ListProducts(t *testing.T) {
 	mockRepo := new(MockProductRepository)
 
 	expectedProducts := []model.Product{
-		{Name: "Basic Checking", Type: "CHECKING", Active: true},
-		{Name: "Premium Savings", Type: "SAVINGS", Active: true},
-		{Name: "Investment Account", Type: "INVESTMENT", Active: false},
+		{Name: "Basic Checking", Type: model.Checking},
+		{Name: "Premium Savings", Type: model.Savings},
+		{Name: "Investment Account", Type: "INVESTMENT"},
 	}
 
 	mockRepo.On("ListProducts").Return(expectedProducts, nil)
@@ -95,7 +89,7 @@ func TestProductService_GetProduct(t *testing.T) {
 
 	expectedProduct := &model.Product{
 		Name: "Test Product",
-		Type: "CHECKING",
+		Type: model.Checking,
 	}
 
 	mockRepo.On("GetProduct", "test-id").Return(expectedProduct, nil)
@@ -121,13 +115,10 @@ func TestProductService_GetProduct_NotFound(t *testing.T) {
 
 func TestProductModel(t *testing.T) {
 	product := model.Product{
-		Name:        "Starter Account",
-		Description: "Perfect for beginners",
-		Type:        "CHECKING",
-		Active:      true,
+		Name: "Starter Account",
+		Type: model.Checking,
 	}
 
 	assert.NotEmpty(t, product.Name)
-	assert.Equal(t, "CHECKING", product.Type)
-	assert.True(t, product.Active)
+	assert.Equal(t, model.Checking, product.Type)
 }

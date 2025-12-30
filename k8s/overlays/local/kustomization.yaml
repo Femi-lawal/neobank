@@ -1,0 +1,104 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: neobank
+
+resources:
+  - ../../base
+  - ../../istio
+
+namePrefix: local-
+
+commonLabels:
+  environment: local
+  cost-center: development
+  team: platform
+
+# Use local images (no registry prefix)
+images:
+  - name: neobank/identity-service
+    newTag: local
+  - name: neobank/ledger-service
+    newTag: local
+  - name: neobank/payment-service
+    newTag: local
+  - name: neobank/product-service
+    newTag: local
+  - name: neobank/card-service
+    newTag: local
+  - name: neobank/frontend
+    newTag: local
+
+# Local development-specific patches
+patches:
+  # Reduce replicas for local dev
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+    target:
+      kind: Deployment
+      labelSelector: "app.kubernetes.io/part-of=neobank"
+
+  # Reduce resource requests for local
+  - patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: "64Mi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: "10m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: "256Mi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: "200m"
+    target:
+      kind: Deployment
+      labelSelector: "app.kubernetes.io/part-of=neobank"
+
+  # Force local images (no pull)
+  - patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: "IfNotPresent"
+    target:
+      kind: Deployment
+      labelSelector: "app.kubernetes.io/part-of=neobank"
+
+  # Patch ConfigMap for backend connectivity
+  - patch: |-
+      - op: replace
+        path: /data/DB_HOST
+        value: "host.docker.internal"
+      - op: replace
+        path: /data/DB_PORT
+        value: "5433"
+      - op: replace
+        path: /data/DB_SSLMODE
+        value: "disable"
+    target:
+      kind: ConfigMap
+      name: neobank-config
+
+# ConfigMap generator for local settings
+# ConfigMap generator for local settings
+# ConfigMap generator for local settings
+# configMapGenerator:
+#   - name: neobank-config
+#     literals:
+#       - LOG_LEVEL=debug
+#       - ENVIRONMENT=local
+#       - ENABLE_FINOPS=true
+#       - ENABLE_DR_TESTING=true
+
+# Mock Secrets for local dev (replaces External Secrets)
+secretGenerator:
+  - name: neobank-db-credentials
+    literals:
+      - username=neobank_dev
+      - password=LocalDevPassword123
+  - name: neobank-jwt
+    literals:
+      - secret=local-dev-jwt-secret-change-in-production

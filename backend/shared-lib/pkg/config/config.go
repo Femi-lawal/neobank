@@ -7,7 +7,10 @@ import (
 	"github.com/spf13/viper"
 )
 
-func LoadConfig(path string, config interface{}) error {
+// LoadBasicConfig loads configuration from a YAML file into the provided config struct.
+// This is a simplified config loader for basic use cases.
+// For AWS-integrated configuration with secrets, use LoadServiceConfig instead.
+func LoadBasicConfig(path string, config interface{}) error {
 	viper.AddConfigPath(path)
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")

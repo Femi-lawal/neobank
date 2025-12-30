@@ -1,0 +1,53 @@
+# ============================================================================
+# LocalStack Provider Override
+# ============================================================================
+# Use this file to override the AWS provider for LocalStack testing
+# Copy this to terraform directory as provider_override.tf before running
+# terraform init/plan/apply with LocalStack
+# ============================================================================
+
+provider "aws" {
+  access_key = "test"
+  secret_key = "test"
+  region     = "us-east-1"
+
+  # Skip validation for LocalStack
+  skip_credentials_validation = true
+  skip_metadata_api_check     = true
+  skip_requesting_account_id  = true
+
+  # S3 path style access for LocalStack
+  s3_use_path_style = true
+
+  # LocalStack endpoint overrides
+  endpoints {
+    acm            = "http://localhost:4566"
+    cloudwatch     = "http://localhost:4566"
+    cloudwatchlogs = "http://localhost:4566"
+    dynamodb       = "http://localhost:4566"
+    ec2            = "http://localhost:4566"
+    eks            = "http://localhost:4566"
+    elasticache    = "http://localhost:4566"
+    iam            = "http://localhost:4566"
+    kafka          = "http://localhost:4566"
+    kms            = "http://localhost:4566"
+    rds            = "http://localhost:4566"
+    s3             = "http://localhost:4566"
+    secretsmanager = "http://localhost:4566"
+    sns            = "http://localhost:4566"
+    sqs            = "http://localhost:4566"
+    ssm            = "http://localhost:4566"
+    sts            = "http://localhost:4566"
+    wafv2          = "http://localhost:4566"
+  }
+
+  default_tags {
+    tags = {
+      Project             = "NeoBank"
+      Environment         = "localstack"
+      ManagedBy           = "Terraform"
+      DataClassification  = "Confidential"
+      ComplianceFramework = "PCIDSS-SOC2-ISO27001"
+    }
+  }
+}

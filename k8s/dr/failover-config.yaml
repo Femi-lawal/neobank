@@ -1,0 +1,291 @@
+# Failover Configuration for Disaster Recovery
+# Defines automated failover mechanisms
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: failover-config
+  namespace: velero
+  labels:
+    app: velero
+    component: failover
+data:
+  # Failover decision tree
+  failover-policy.yaml: |
+    # Failover Policy Configuration
+    failoverPolicy:
+      # Automatic failover triggers
+      automaticTriggers:
+        - name: region-failure
+          condition: "region_health_score < 0.5"
+          action: failover-to-dr
+          cooldown: 30m
+        
+        - name: database-failure
+          condition: "database_connection_errors > 100 per minute"
+          action: promote-replica
+          cooldown: 5m
+        
+        - name: service-degradation
+          condition: "error_rate > 50% for 5 minutes"
+          action: traffic-shift
+          cooldown: 10m
+      
+      # Manual approval required
+      manualApproval:
+        - full-region-failover
+        - database-failover
+      
+      # Failback policy
+      failback:
+        automatic: false
+        requiresApproval: true
+        validationSteps:
+          - health-check
+          - data-sync-verification
+          - traffic-test
+
+  # DNS failover configuration
+  dns-failover.yaml: |
+    dnsFailover:
+      provider: route53
+      primaryRecord: api.neobank.io
+      drRecord: api-dr.neobank.io
+      healthCheck:
+        type: HTTPS
+        port: 443
+        path: /health
+        failureThreshold: 3
+        interval: 30s
+      
+      # Weighted routing for gradual failover
+      weightedRouting:
+        enabled: true
+        primary: 100
+        dr: 0
+      
+      # Failover weights progression
+      failoverProgression:
+        - step: 1
+          primary: 90
+          dr: 10
+          duration: 5m
+        - step: 2
+          primary: 50
+          dr: 50
+          duration: 10m
+        - step: 3
+          primary: 0
+          dr: 100
+          duration: stable
+
+  # Service mesh failover (Istio)
+  istio-failover.yaml: |
+    apiVersion: networking.istio.io/v1alpha3
+    kind: DestinationRule
+    metadata:
+      name: neobank-dr-destination
+      namespace: neobank
+    spec:
+      host: "*.neobank.svc.cluster.local"
+      trafficPolicy:
+        connectionPool:
+          tcp:
+            maxConnections: 100
+          http:
+            h2UpgradePolicy: UPGRADE
+            http1MaxPendingRequests: 100
+            http2MaxRequests: 1000
+        outlierDetection:
+          consecutive5xxErrors: 5
+          interval: 30s
+          baseEjectionTime: 30s
+          maxEjectionPercent: 100
+        # Locality-based failover
+        loadBalancer:
+          localityLbSetting:
+            enabled: true
+            failover:
+              - from: us-east-1
+                to: us-west-2
+---
+# Failover scripts
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: failover-scripts
+  namespace: velero
+data:
+  # Initiate failover
+  failover.sh: |
+    #!/bin/bash
+    set -e
+
+    FAILOVER_TYPE=${1:-"traffic-shift"}
+    DR_REGION=${2:-"us-west-2"}
+
+    echo "=== Initiating Failover: $FAILOVER_TYPE ===" 
+    echo "Target DR Region: $DR_REGION"
+    echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+    case $FAILOVER_TYPE in
+      "traffic-shift")
+        echo "Shifting traffic to DR region..."
+        # Update Istio virtual service
+        kubectl patch virtualservice neobank-vs -n istio-system \
+          --type=json \
+          -p='[{"op": "replace", "path": "/spec/http/0/route/0/weight", "value": 0},
+               {"op": "replace", "path": "/spec/http/0/route/1/weight", "value": 100}]'
+        ;;
+      
+      "database-failover")
+        echo "Promoting database replica..."
+        # Promote read replica
+        kubectl exec -n neobank deploy/postgres -- pg_ctl promote -D /var/lib/postgresql/data
+        
+        # Update connection strings
+        kubectl patch configmap neobank-config -n neobank \
+          --type=json \
+          -p='[{"op": "replace", "path": "/data/DB_HOST", "value": "postgres-dr.neobank.svc"}]'
+        
+        # Restart services to pick up new config
+        kubectl rollout restart deployment -n neobank
+        ;;
+      
+      "full-failover")
+        echo "Executing full region failover..."
+        
+        # 1. Stop traffic to primary
+        echo "Step 1: Stopping primary traffic..."
+        kubectl scale deployment --all -n neobank --replicas=0
+        
+        # 2. Restore to DR cluster
+        echo "Step 2: Restoring to DR cluster..."
+        kubectl config use-context dr-cluster
+        velero restore create dr-failover-$(date +%s) \
+          --from-backup $(velero backup get -o json | jq -r '.items | sort_by(.metadata.creationTimestamp) | last | .metadata.name') \
+          --wait
+        
+        # 3. Update DNS
+        echo "Step 3: Updating DNS..."
+        ./dns-failover.sh activate-dr
+        
+        # 4. Verify services
+        echo "Step 4: Verifying DR services..."
+        ./verify-restore.sh
+        ;;
+      
+      *)
+        echo "Unknown failover type: $FAILOVER_TYPE"
+        exit 1
+        ;;
+    esac
+
+    echo "=== Failover Complete ==="
+
+  # Failback procedure
+  failback.sh: |
+    #!/bin/bash
+    set -e
+
+    echo "=== Initiating Failback to Primary ===" 
+    echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+    # 1. Verify primary region health
+    echo "Step 1: Verifying primary region health..."
+    kubectl config use-context primary-cluster
+    kubectl get nodes
+
+    # 2. Sync data from DR
+    echo "Step 2: Syncing data from DR region..."
+    # Database sync
+    kubectl exec -n neobank deploy/postgres -- pg_dump -U neobank neobank > /tmp/dr-data.sql
+    kubectl config use-context primary-cluster
+    kubectl cp /tmp/dr-data.sql neobank/postgres-0:/tmp/dr-data.sql
+    kubectl exec -n neobank postgres-0 -- psql -U neobank -d neobank -f /tmp/dr-data.sql
+
+    # 3. Gradually shift traffic back
+    echo "Step 3: Shifting traffic to primary (10%)..."
+    kubectl patch virtualservice neobank-vs -n istio-system \
+      --type=json \
+      -p='[{"op": "replace", "path": "/spec/http/0/route/0/weight", "value": 10},
+           {"op": "replace", "path": "/spec/http/0/route/1/weight", "value": 90}]'
+
+    sleep 300  # Wait 5 minutes
+
+    echo "Step 4: Shifting traffic to primary (50%)..."
+    kubectl patch virtualservice neobank-vs -n istio-system \
+      --type=json \
+      -p='[{"op": "replace", "path": "/spec/http/0/route/0/weight", "value": 50},
+           {"op": "replace", "path": "/spec/http/0/route/1/weight", "value": 50}]'
+
+    sleep 300  # Wait 5 minutes
+
+    echo "Step 5: Completing failback (100% primary)..."
+    kubectl patch virtualservice neobank-vs -n istio-system \
+      --type=json \
+      -p='[{"op": "replace", "path": "/spec/http/0/route/0/weight", "value": 100},
+           {"op": "replace", "path": "/spec/http/0/route/1/weight", "value": 0}]'
+
+    # 4. Update DNS
+    echo "Step 6: Restoring primary DNS..."
+    ./dns-failover.sh deactivate-dr
+
+    echo "=== Failback Complete ==="
+
+  # DNS failover script
+  dns-failover.sh: |
+    #!/bin/bash
+    set -e
+
+    ACTION=${1:-"status"}
+    HOSTED_ZONE_ID=${ROUTE53_ZONE_ID:-"Z1234567890ABC"}
+
+    case $ACTION in
+      "activate-dr")
+        echo "Activating DR DNS failover..."
+        aws route53 change-resource-record-sets \
+          --hosted-zone-id $HOSTED_ZONE_ID \
+          --change-batch '{
+            "Changes": [{
+              "Action": "UPSERT",
+              "ResourceRecordSet": {
+                "Name": "api.neobank.io",
+                "Type": "A",
+                "AliasTarget": {
+                  "HostedZoneId": "Z2FDTNDATAQYW2",
+                  "DNSName": "dr-alb.us-west-2.elb.amazonaws.com",
+                  "EvaluateTargetHealth": true
+                }
+              }
+            }]
+          }'
+        ;;
+      
+      "deactivate-dr")
+        echo "Deactivating DR DNS failover..."
+        aws route53 change-resource-record-sets \
+          --hosted-zone-id $HOSTED_ZONE_ID \
+          --change-batch '{
+            "Changes": [{
+              "Action": "UPSERT",
+              "ResourceRecordSet": {
+                "Name": "api.neobank.io",
+                "Type": "A",
+                "AliasTarget": {
+                  "HostedZoneId": "Z2FDTNDATAQYW2",
+                  "DNSName": "primary-alb.us-east-1.elb.amazonaws.com",
+                  "EvaluateTargetHealth": true
+                }
+              }
+            }]
+          }'
+        ;;
+      
+      "status")
+        echo "Current DNS status:"
+        aws route53 list-resource-record-sets \
+          --hosted-zone-id $HOSTED_ZONE_ID \
+          --query "ResourceRecordSets[?Name=='api.neobank.io.']"
+        ;;
+    esac

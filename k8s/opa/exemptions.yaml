@@ -1,0 +1,131 @@
+# OPA Gatekeeper Policy Exemptions
+# Defines exceptions to policies for specific use cases
+---
+# Exemption for system namespaces
+apiVersion: config.gatekeeper.sh/v1alpha1
+kind: Config
+metadata:
+  name: config
+  namespace: gatekeeper-system
+spec:
+  match:
+    - excludedNamespaces:
+        - kube-system
+        - kube-public
+        - kube-node-lease
+        - gatekeeper-system
+        - istio-system
+        - velero
+        - cert-manager
+      processes:
+        - "*"
+---
+# Exemption annotation helper
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: policy-exemption-guide
+  namespace: gatekeeper-system
+  labels:
+    app.kubernetes.io/name: gatekeeper-exemptions
+data:
+  README.md: |
+    # Policy Exemption Guide
+
+    ## How to Request Exemptions
+
+    Exemptions can be granted through:
+    1. Namespace exclusions (in Config)
+    2. Image exemptions (in constraint parameters)
+    3. Label-based exemptions
+
+    ## Current Exemptions
+
+    ### Namespace Exemptions
+    - kube-system: Core Kubernetes components
+    - kube-public: Public Kubernetes resources
+    - gatekeeper-system: OPA Gatekeeper itself
+    - istio-system: Istio service mesh
+    - velero: Backup and disaster recovery
+    - cert-manager: Certificate management
+
+    ### Image Exemptions
+    - docker.io/istio/*: Istio sidecar containers
+    - gcr.io/istio/*: Istio containers
+
+    ## Requesting New Exemptions
+
+    1. Create a ticket in the platform team queue
+    2. Provide justification for the exemption
+    3. Specify the constraint and scope
+    4. Include security risk assessment
+    5. Get approval from security team
+
+    ## Temporary Exemptions
+
+    For temporary exemptions during migrations:
+    1. Set enforcementAction to "warn" instead of "deny"
+    2. Document the migration timeline
+    3. Set a review date
+    4. Transition to "deny" after migration
+
+    ## Audit Trail
+
+    All exemptions are logged in:
+    - Gatekeeper audit logs
+    - Prometheus metrics
+    - Daily compliance reports
+
+  exemption-template.yaml: |
+    # Example: Exemption for specific deployment
+    # Add this annotation to the resource
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: legacy-app
+      annotations:
+        # Request policy exemption
+        policies.neobank.io/exemption-requested: "true"
+        policies.neobank.io/exemption-reason: "Legacy application migration"
+        policies.neobank.io/exemption-expires: "2026-06-01"
+        policies.neobank.io/exemption-approver: "security-team"
+---
+# Mutation to add policy tracking labels
+apiVersion: mutations.gatekeeper.sh/v1
+kind: Assign
+metadata:
+  name: add-policy-version-label
+  namespace: gatekeeper-system
+spec:
+  applyTo:
+    - groups: ["apps"]
+      kinds: ["Deployment"]
+      versions: ["v1"]
+  match:
+    scope: Namespaced
+    kinds:
+      - apiGroups: ["apps"]
+        kinds: ["Deployment"]
+    namespaces: ["neobank"]
+  location: "metadata.labels.policy-version"
+  parameters:
+    assign:
+      value: "v1.0.0"
+---
+# Assign default security context if missing
+apiVersion: mutations.gatekeeper.sh/v1
+kind: AssignMetadata
+metadata:
+  name: default-security-labels
+  namespace: gatekeeper-system
+spec:
+  match:
+    scope: Namespaced
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    namespaces: ["neobank"]
+  location: "metadata.labels.security-policy-applied"
+  parameters:
+    assign:
+      value: "true"

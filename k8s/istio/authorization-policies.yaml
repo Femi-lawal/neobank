@@ -1,0 +1,154 @@
+# Istio Authorization Policies
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: deny-all
+  namespace: neobank
+spec: {} # Deny all by default
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-frontend
+  namespace: neobank
+spec:
+  selector:
+    matchLabels:
+      app: frontend
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            namespaces: ["istio-system"]
+    - to:
+        - operation:
+            methods: ["GET", "POST", "PUT", "DELETE"]
+            paths: ["/*"]
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-identity-service
+  namespace: neobank
+spec:
+  selector:
+    matchLabels:
+      app: identity-service
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            namespaces: ["istio-system"]
+        - source:
+            principals: ["cluster.local/ns/neobank/sa/frontend-sa"]
+    - to:
+        - operation:
+            methods: ["GET", "POST"]
+            paths: ["/health", "/auth/*", "/api/v1/*"]
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-ledger-service
+  namespace: neobank
+spec:
+  selector:
+    matchLabels:
+      app: ledger-service
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            namespaces: ["istio-system"]
+        - source:
+            principals:
+              - "cluster.local/ns/neobank/sa/frontend-sa"
+              - "cluster.local/ns/neobank/sa/payment-service-sa"
+              - "cluster.local/ns/neobank/sa/identity-service-sa"
+    - to:
+        - operation:
+            methods: ["GET", "POST", "PUT"]
+            paths: ["/health", "/api/v1/*"]
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-payment-service
+  namespace: neobank
+spec:
+  selector:
+    matchLabels:
+      app: payment-service
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            namespaces: ["istio-system"]
+        - source:
+            principals:
+              - "cluster.local/ns/neobank/sa/frontend-sa"
+              - "cluster.local/ns/neobank/sa/ledger-service-sa"
+    - to:
+        - operation:
+            methods: ["GET", "POST"]
+            paths: ["/health", "/api/v1/*"]
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-card-service
+  namespace: neobank
+spec:
+  selector:
+    matchLabels:
+      app: card-service
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            namespaces: ["istio-system"]
+        - source:
+            principals:
+              - "cluster.local/ns/neobank/sa/frontend-sa"
+              - "cluster.local/ns/neobank/sa/ledger-service-sa"
+    - to:
+        - operation:
+            methods: ["GET", "POST", "PUT", "DELETE"]
+            paths: ["/health", "/api/v1/*"]
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-product-service
+  namespace: neobank
+spec:
+  selector:
+    matchLabels:
+      app: product-service
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            namespaces: ["istio-system"]
+        - source:
+            principals:
+              - "cluster.local/ns/neobank/sa/frontend-sa"
+    - to:
+        - operation:
+            methods: ["GET"]
+            paths: ["/health", "/api/v1/*"]
+---
+# Allow health checks from Kubernetes
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-health-checks
+  namespace: neobank
+spec:
+  action: ALLOW
+  rules:
+    - to:
+        - operation:
+            methods: ["GET"]
+            paths: ["/health", "/healthz", "/ready", "/readiness", "/liveness"]

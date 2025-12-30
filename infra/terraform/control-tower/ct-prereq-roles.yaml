@@ -1,0 +1,136 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "AWS Control Tower prerequisite roles"
+
+Parameters:
+  ManagementAccountId:
+    Type: String
+    Description: "The AWS Account ID of the management account running Control Tower (leave blank if deploying in management account)"
+    Default: ""
+
+Conditions:
+  IsManagementAccount: !Equals [!Ref ManagementAccountId, ""]
+
+Resources:
+  AWSControlTowerAdmin:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName: AWSControlTowerAdmin
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: controltower.amazonaws.com
+            Action: "sts:AssumeRole"
+      Path: "/service-role/"
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSControlTowerServiceRolePolicy"
+
+  AWSControlTowerAdminPolicy:
+    Type: "AWS::IAM::Policy"
+    Properties:
+      PolicyName: AWSControlTowerAdminPolicy
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: "ec2:DescribeAvailabilityZones"
+            Resource: "*"
+      Roles:
+        - !Ref AWSControlTowerAdmin
+
+  AWSControlTowerCloudTrailRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName: AWSControlTowerCloudTrailRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: "sts:AssumeRole"
+      Path: "/service-role/"
+
+  AWSControlTowerCloudTrailRolePolicy:
+    Type: "AWS::IAM::Policy"
+    Properties:
+      PolicyName: AWSControlTowerCloudTrailRolePolicy
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Action:
+              - "logs:CreateLogStream"
+              - "logs:PutLogEvents"
+            Resource: !Sub "arn:${AWS::Partition}:logs:*:*:log-group:aws-controltower/CloudTrailLogs:*"
+            Effect: Allow
+      Roles:
+        - !Ref AWSControlTowerCloudTrailRole
+
+  AWSControlTowerConfigAggregatorRoleForOrganizations:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName: AWSControlTowerConfigAggregatorRoleForOrganizations
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: config.amazonaws.com
+            Action: "sts:AssumeRole"
+      Path: "/service-role/"
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSConfigRoleForOrganizations"
+
+  AWSControlTowerStackSetRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName: AWSControlTowerStackSetRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudformation.amazonaws.com
+            Action: "sts:AssumeRole"
+      Path: "/service-role/"
+
+  AWSControlTowerStackSetRolePolicy:
+    Type: "AWS::IAM::Policy"
+    Properties:
+      PolicyName: AWSControlTowerStackSetRolePolicy
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Action: "sts:AssumeRole"
+            Resource: !Sub "arn:${AWS::Partition}:iam::*:role/AWSControlTowerExecution"
+            Effect: Allow
+      Roles:
+        - !Ref AWSControlTowerStackSetRole
+
+  AWSControlTowerExecutionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName: AWSControlTowerExecution
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !If
+                - IsManagementAccount
+                - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/service-role/AWSControlTowerStackSetRole"
+                - !Sub "arn:${AWS::Partition}:iam::${ManagementAccountId}:role/service-role/AWSControlTowerStackSetRole"
+            Action: "sts:AssumeRole"
+      Path: "/"
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AdministratorAccess"
+
+Outputs:
+  AWSControlTowerAdminRoleArn:
+    Value: !GetAtt AWSControlTowerAdmin.Arn
+    Description: ARN of the AWSControlTowerAdmin role
+
+  AWSControlTowerExecutionRoleArn:
+    Value: !GetAtt AWSControlTowerExecutionRole.Arn
+    Description: ARN of the AWSControlTowerExecution role

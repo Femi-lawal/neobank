@@ -78,7 +78,7 @@ func (rl *UserRateLimiter) Remaining(userID string) int {
 	}
 
 	// Check if window expired
-	if time.Now().Sub(limit.windowStart) > rl.window {
+	if time.Since(limit.windowStart) > rl.window {
 		return rl.maxRequests
 	}
 

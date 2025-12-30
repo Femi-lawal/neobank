@@ -1,0 +1,184 @@
+# Backup Schedules for NeoBank DR
+# Defines automated backup policies
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backup-schedules
+  namespace: velero
+  labels:
+    app: velero
+    component: backup-schedules
+data:
+  # Critical services - every 5 minutes
+  tier1-backup.yaml: |
+    apiVersion: velero.io/v1
+    kind: Schedule
+    metadata:
+      name: neobank-tier1-backup
+      namespace: velero
+    spec:
+      schedule: "*/5 * * * *"
+      useOwnerReferencesInBackup: false
+      template:
+        includedNamespaces:
+          - neobank
+        includedResources:
+          - deployments
+          - services
+          - configmaps
+          - secrets
+          - persistentvolumeclaims
+          - persistentvolumes
+        labelSelector:
+          matchExpressions:
+            - key: service-tier
+              operator: In
+              values:
+                - tier-1
+        storageLocation: default
+        volumeSnapshotLocations:
+          - default
+        ttl: 168h  # 7 days
+        snapshotVolumes: true
+        hooks:
+          resources:
+            - name: postgres-backup-hook
+              includedNamespaces:
+                - neobank
+              labelSelector:
+                matchLabels:
+                  app: postgres
+              pre:
+                - exec:
+                    container: postgres
+                    command:
+                      - /bin/bash
+                      - -c
+                      - pg_dump -U neobank neobank > /backup/pre-backup.sql
+                    onError: Fail
+                    timeout: 5m
+              post:
+                - exec:
+                    container: postgres
+                    command:
+                      - /bin/bash
+                      - -c
+                      - rm -f /backup/pre-backup.sql
+                    onError: Continue
+                    timeout: 1m
+
+  # Important services - every 15 minutes
+  tier2-backup.yaml: |
+    apiVersion: velero.io/v1
+    kind: Schedule
+    metadata:
+      name: neobank-tier2-backup
+      namespace: velero
+    spec:
+      schedule: "*/15 * * * *"
+      template:
+        includedNamespaces:
+          - neobank
+        labelSelector:
+          matchExpressions:
+            - key: service-tier
+              operator: In
+              values:
+                - tier-2
+        storageLocation: default
+        ttl: 336h  # 14 days
+        snapshotVolumes: true
+
+  # Full namespace backup - hourly
+  full-backup.yaml: |
+    apiVersion: velero.io/v1
+    kind: Schedule
+    metadata:
+      name: neobank-full-backup
+      namespace: velero
+    spec:
+      schedule: "0 * * * *"
+      template:
+        includedNamespaces:
+          - neobank
+          - finops
+          - istio-system
+        excludedResources:
+          - events
+          - events.events.k8s.io
+        storageLocation: default
+        volumeSnapshotLocations:
+          - default
+        ttl: 720h  # 30 days
+        snapshotVolumes: true
+
+  # Daily comprehensive backup
+  daily-backup.yaml: |
+    apiVersion: velero.io/v1
+    kind: Schedule
+    metadata:
+      name: neobank-daily-backup
+      namespace: velero
+    spec:
+      schedule: "0 2 * * *"  # 2 AM daily
+      template:
+        includedNamespaces:
+          - "*"
+        excludedNamespaces:
+          - kube-system
+          - kube-public
+        excludedResources:
+          - events
+          - events.events.k8s.io
+        storageLocation: default
+        volumeSnapshotLocations:
+          - default
+        ttl: 2160h  # 90 days
+        snapshotVolumes: true
+        includeClusterResources: true
+---
+# Backup status monitoring
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backup-monitoring-rules
+  namespace: velero
+data:
+  prometheus-rules.yaml: |
+    groups:
+      - name: velero-backup-alerts
+        rules:
+          - alert: VeleroBackupFailed
+            expr: |
+              increase(velero_backup_failure_total[1h]) > 0
+            for: 5m
+            labels:
+              severity: critical
+              team: platform
+            annotations:
+              summary: "Velero backup failed"
+              description: "Backup {{ $labels.schedule }} failed"
+              runbook_url: "https://docs.neobank.io/runbooks/dr/backup-failed"
+          
+          - alert: VeleroBackupMissing
+            expr: |
+              time() - velero_backup_last_successful_timestamp > 3600
+            for: 30m
+            labels:
+              severity: warning
+              team: platform
+            annotations:
+              summary: "No successful backup in last hour"
+              description: "Schedule {{ $labels.schedule }} hasn't completed"
+          
+          - alert: VeleroBackupPartial
+            expr: |
+              increase(velero_backup_partial_failure_total[1h]) > 0
+            for: 5m
+            labels:
+              severity: warning
+              team: platform
+            annotations:
+              summary: "Velero backup partially failed"
+              description: "Some items in backup {{ $labels.schedule }} failed"

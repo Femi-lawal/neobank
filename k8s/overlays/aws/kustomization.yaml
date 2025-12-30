@@ -1,0 +1,200 @@
+# ============================================================================
+# Kustomization for AWS Overlay
+# ============================================================================
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: neobank
+
+resources:
+  - ../../base
+  - service-accounts.yaml
+  - configmap.yaml
+
+# Common labels for all resources
+commonLabels:
+  environment: aws
+  managed-by: kustomize
+
+# Patches for AWS-specific configurations
+patches:
+  # Identity Service - use AWS service account
+  - target:
+      kind: Deployment
+      name: identity-service
+    patch: |-
+      - op: add
+        path: /spec/template/spec/serviceAccountName
+        value: identity-service
+      - op: add
+        path: /spec/template/spec/containers/0/envFrom/-
+        value:
+          configMapRef:
+            name: aws-config
+      - op: replace
+        path: /spec/template/spec/containers/0/securityContext/runAsNonRoot
+        value: true
+      - op: add
+        path: /spec/template/spec/containers/0/securityContext/allowPrivilegeEscalation
+        value: false
+      - op: add
+        path: /spec/template/spec/containers/0/securityContext/capabilities
+        value:
+          drop:
+            - ALL
+      - op: add
+        path: /spec/template/spec/containers/0/securityContext/seccompProfile
+        value:
+          type: RuntimeDefault
+
+  # Ledger Service - use AWS service account
+  - target:
+      kind: Deployment
+      name: ledger-service
+    patch: |-
+      - op: add
+        path: /spec/template/spec/serviceAccountName
+        value: ledger-service
+      - op: add
+        path: /spec/template/spec/containers/0/envFrom/-
+        value:
+          configMapRef:
+            name: aws-config
+      - op: replace
+        path: /spec/template/spec/containers/0/securityContext/runAsNonRoot
+        value: true
+      - op: add
+        path: /spec/template/spec/containers/0/securityContext/allowPrivilegeEscalation
+        value: false
+      - op: add
+        path: /spec/template/spec/containers/0/securityContext/capabilities
+        value:
+          drop:
+            - ALL
+      - op: add
+        path: /spec/template/spec/containers/0/securityContext/seccompProfile
+        value:
+          type: RuntimeDefault
+
+  # Payment Service - use AWS service account
+  - target:
+      kind: Deployment
+      name: payment-service
+    patch: |-
+      - op: add
+        path: /spec/template/spec/serviceAccountName
+        value: payment-service
+      - op: add
+        path: /spec/template/spec/containers/0/envFrom/-
+        value:
+          configMapRef:
+            name: aws-config
+      - op: replace
+        path: /spec/template/spec/containers/0/securityContext/runAsNonRoot
+        value: true
+      - op: add
+        path: /spec/template/spec/containers/0/securityContext/allowPrivilegeEscalation
+        value: false
+      - op: add
+        path: /spec/template/spec/containers/0/securityContext/capabilities
+        value:
+          drop:
+            - ALL
+      - op: add
+        path: /spec/template/spec/containers/0/securityContext/seccompProfile
+        value:
+          type: RuntimeDefault
+
+  # Product Service - use AWS service account
+  - target:
+      kind: Deployment
+      name: product-service
+    patch: |-
+      - op: add
+        path: /spec/template/spec/serviceAccountName
+        value: product-service
+      - op: add
+        path: /spec/template/spec/containers/0/envFrom/-
+        value:
+          configMapRef:
+            name: aws-config
+      - op: replace
+        path: /spec/template/spec/containers/0/securityContext/runAsNonRoot
+        value: true
+      - op: add
+        path: /spec/template/spec/containers/0/securityContext/allowPrivilegeEscalation
+        value: false
+      - op: add
+        path: /spec/template/spec/containers/0/securityContext/capabilities
+        value:
+          drop:
+            - ALL
+      - op: add
+        path: /spec/template/spec/containers/0/securityContext/seccompProfile
+        value:
+          type: RuntimeDefault
+
+  # Card Service - use AWS service account
+  - target:
+      kind: Deployment
+      name: card-service
+    patch: |-
+      - op: add
+        path: /spec/template/spec/serviceAccountName
+        value: card-service
+      - op: add
+        path: /spec/template/spec/containers/0/envFrom/-
+        value:
+          configMapRef:
+            name: aws-config
+      - op: replace
+        path: /spec/template/spec/containers/0/securityContext/runAsNonRoot
+        value: true
+      - op: add
+        path: /spec/template/spec/containers/0/securityContext/allowPrivilegeEscalation
+        value: false
+      - op: add
+        path: /spec/template/spec/containers/0/securityContext/capabilities
+        value:
+          drop:
+            - ALL
+      - op: add
+        path: /spec/template/spec/containers/0/securityContext/seccompProfile
+        value:
+          type: RuntimeDefault
+
+# Image configuration for production
+images:
+  - name: identity-service
+    newName: ${ECR_REGISTRY}/identity-service
+    newTag: ${IMAGE_TAG}
+  - name: ledger-service
+    newName: ${ECR_REGISTRY}/ledger-service
+    newTag: ${IMAGE_TAG}
+  - name: payment-service
+    newName: ${ECR_REGISTRY}/payment-service
+    newTag: ${IMAGE_TAG}
+  - name: product-service
+    newName: ${ECR_REGISTRY}/product-service
+    newTag: ${IMAGE_TAG}
+  - name: card-service
+    newName: ${ECR_REGISTRY}/card-service
+    newTag: ${IMAGE_TAG}
+  - name: frontend
+    newName: ${ECR_REGISTRY}/frontend
+    newTag: ${IMAGE_TAG}
+
+# Resource limits for production
+replicas:
+  - name: identity-service
+    count: 2
+  - name: ledger-service
+    count: 2
+  - name: payment-service
+    count: 2
+  - name: product-service
+    count: 2
+  - name: card-service
+    count: 2
+  - name: frontend
+    count: 2

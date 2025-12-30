@@ -1,4 +1,12 @@
-name: neobank_full
+name: neobank
+
+# =============================================================================
+# NeoBank Docker Compose - Full Platform
+# =============================================================================
+# Single source of truth for Local Development.
+# Starts Infrastructure (Postgres, Kafka, Redis), Observability (Prometheus, Grafana, Jaeger),
+# and Application Services (Backend, Frontend).
+# =============================================================================
 
 services:
   # ---------------------
@@ -8,18 +16,31 @@ services:
     image: postgres:16-alpine
     container_name: neobank_postgres
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: newbank_core
+      POSTGRES_USER: ${POSTGRES_USER:-neobank_dev}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-LocalDevPassword123}
+      POSTGRES_DB: ${POSTGRES_DB:-newbank_core}
     ports:
       - "5433:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data_v2:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d newbank_core"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-neobank_dev} -d ${POSTGRES_DB:-newbank_core}" ]
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - neobank
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: neobank_postgres_exporter
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-neobank_dev}:${POSTGRES_PASSWORD:-LocalDevPassword123}@postgres:5432/${POSTGRES_DB:-newbank_core}?sslmode=disable"
+    ports:
+      - "9187:9187"
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - neobank
 
@@ -39,12 +60,27 @@ services:
     networks:
       - neobank
 
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: neobank_redis_exporter
+    environment:
+      REDIS_ADDR: redis:6379
+    ports:
+      - "9121:9121"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - neobank
+
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
     container_name: neobank_zookeeper
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
     networks:
       - neobank
 
@@ -55,6 +91,7 @@ services:
       - zookeeper
     ports:
       - "9092:9092"
+      - "29092:29092"
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
@@ -62,11 +99,127 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_JMX_PORT: 9999
+      KAFKA_JMX_HOSTNAME: kafka
     healthcheck:
-      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      test: [ "CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092" ]
       interval: 10s
       timeout: 10s
       retries: 5
+    networks:
+      - neobank
+
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:latest
+    container_name: neobank_kafka_exporter
+    command: --kafka.server=kafka:29092
+    ports:
+      - "9308:9308"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - neobank
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: neobank_kafka_ui
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8090:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    networks:
+      - neobank
+
+  # ---------------------
+  # Observability
+  # ---------------------
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: neobank_jaeger
+    ports:
+      - "16686:16686" # Web UI
+      - "14268:14268" # Collector HTTP
+      - "14250:14250" # Collector GRPC
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    networks:
+      - neobank
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: neobank_otel_collector
+    command: ["--config=/etc/otel/otel-collector-config.yaml"]
+    volumes:
+      - ./infra/observability/otel/otel-collector-config.yaml:/etc/otel/otel-collector-config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "8889:8889"   # Prometheus metrics export
+      - "13133:13133" # Health check
+      - "55679:55679" # zPages
+    depends_on:
+      - jaeger
+    networks:
+      - neobank
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: neobank_prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infra/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/observability/prometheus/alerts:/etc/prometheus/alerts:ro
+      - prometheus_data:/prometheus
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - neobank
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: neobank_grafana
+    depends_on:
+      - prometheus
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+    volumes:
+      - ./infra/observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./infra/observability/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./infra/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    networks:
+      - neobank
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: neobank_node_exporter
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
     networks:
       - neobank
 
@@ -81,14 +234,19 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      otel-collector:
+        condition: service_started
     environment:
       - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_USER=user
-      - DB_PASSWORD=password
-      - DB_NAME=newbank_core
-      - JWT_SECRET=super-secret-jwt-key-change-in-production
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_USER=${DB_USER:-neobank_dev}
+      - DB_PASSWORD=${DB_PASSWORD:-LocalDevPassword123}
+      - DB_NAME=${DB_NAME:-newbank_core}
+      - JWT_SECRET=${JWT_SECRET:-local-dev-jwt-secret-change-in-production}
       - PORT=8081
+      - OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4317
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8081:8081"
     restart: unless-stopped
@@ -106,17 +264,22 @@ services:
       redis:
         condition: service_healthy
       kafka:
+        condition: service_healthy
+      otel-collector:
         condition: service_started
     environment:
       - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_USER=user
-      - DB_PASSWORD=password
-      - DB_NAME=newbank_core
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_USER=${DB_USER:-neobank_dev}
+      - DB_PASSWORD=${DB_PASSWORD:-LocalDevPassword123}
+      - DB_NAME=${DB_NAME:-newbank_core}
       - REDIS_ADDR=redis:6379
       - KAFKA_BROKERS=kafka:29092
-      - JWT_SECRET=super-secret-jwt-key-change-in-production
+      - JWT_SECRET=${JWT_SECRET:-local-dev-jwt-secret-change-in-production}
       - PORT=8082
+      - OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4317
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8082:8082"
     restart: unless-stopped
@@ -132,19 +295,24 @@ services:
       postgres:
         condition: service_healthy
       kafka:
-        condition: service_started
+        condition: service_healthy
       ledger-service:
+        condition: service_started
+      otel-collector:
         condition: service_started
     environment:
       - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_USER=user
-      - DB_PASSWORD=password
-      - DB_NAME=newbank_core
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_USER=${DB_USER:-neobank_dev}
+      - DB_PASSWORD=${DB_PASSWORD:-LocalDevPassword123}
+      - DB_NAME=${DB_NAME:-newbank_core}
       - KAFKA_BROKERS=kafka:29092
-      - LEDGER_SERVICE_URL=http://ledger-service:8082
-      - JWT_SECRET=super-secret-jwt-key-change-in-production
+      - LEDGER_SERVICE_URL=${LEDGER_SERVICE_URL:-http://ledger-service:8082}
+      - JWT_SECRET=${JWT_SECRET:-local-dev-jwt-secret-change-in-production}
       - PORT=8083
+      - OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4317
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8083:8083"
     restart: unless-stopped
@@ -159,14 +327,19 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      otel-collector:
+        condition: service_started
     environment:
       - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_USER=user
-      - DB_PASSWORD=password
-      - DB_NAME=newbank_core
-      - JWT_SECRET=super-secret-jwt-key-change-in-production
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_USER=${DB_USER:-neobank_dev}
+      - DB_PASSWORD=${DB_PASSWORD:-LocalDevPassword123}
+      - DB_NAME=${DB_NAME:-newbank_core}
+      - JWT_SECRET=${JWT_SECRET:-local-dev-jwt-secret-change-in-production}
       - PORT=8084
+      - OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4317
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8084:8084"
     restart: unless-stopped
@@ -181,14 +354,20 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      otel-collector:
+        condition: service_started
     environment:
       - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_USER=user
-      - DB_PASSWORD=password
-      - DB_NAME=newbank_core
-      - JWT_SECRET=super-secret-jwt-key-change-in-production
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_USER=${DB_USER:-neobank_dev}
+      - DB_PASSWORD=${DB_PASSWORD:-LocalDevPassword123}
+      - DB_NAME=${DB_NAME:-newbank_core}
+      - JWT_SECRET=${JWT_SECRET:-local-dev-jwt-secret-change-in-production}
+      - CARD_ENCRYPTION_KEY=${CARD_ENCRYPTION_KEY:-12345678901234567890123456789012} # 32 bytes
       - PORT=8085
+      - OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4317
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8085:8085"
     restart: unless-stopped
@@ -210,15 +389,28 @@ services:
       - product-service
       - card-service
     environment:
-      - NODE_ENV=production
-      - NEXT_PUBLIC_IDENTITY_API=http://localhost:8081
-      - NEXT_PUBLIC_LEDGER_API=http://localhost:8082
-      - NEXT_PUBLIC_PAYMENT_API=http://localhost:8083
-      - NEXT_PUBLIC_PRODUCT_API=http://localhost:8084
-      - NEXT_PUBLIC_CARD_API=http://localhost:8085
+      - NODE_ENV=${NODE_ENV:-production}
+      # Server-side service URLs
+      - IDENTITY_SERVICE_URL=${IDENTITY_SERVICE_URL:-http://identity-service:8081}
+      - LEDGER_SERVICE_URL=${LEDGER_SERVICE_URL:-http://ledger-service:8082}
+      - PAYMENT_SERVICE_URL=${PAYMENT_SERVICE_URL:-http://payment-service:8083}
+      - PRODUCT_SERVICE_URL=${PRODUCT_SERVICE_URL:-http://product-service:8084}
+      - CARD_SERVICE_URL=${CARD_SERVICE_URL:-http://card-service:8085}
+      # Client-side API URLs (browser -> host)
+      - NEXT_PUBLIC_IDENTITY_API=${NEXT_PUBLIC_IDENTITY_API:-http://localhost:8081}
+      - NEXT_PUBLIC_LEDGER_API=${NEXT_PUBLIC_LEDGER_API:-http://localhost:8082}
+      - NEXT_PUBLIC_PAYMENT_API=${NEXT_PUBLIC_PAYMENT_API:-http://localhost:8083}
+      - NEXT_PUBLIC_PRODUCT_API=${NEXT_PUBLIC_PRODUCT_API:-http://localhost:8084}
+      - NEXT_PUBLIC_CARD_API=${NEXT_PUBLIC_CARD_API:-http://localhost:8085}
     ports:
       - "3001:3000"
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     networks:
       - neobank
 
@@ -227,5 +419,7 @@ networks:
     driver: bridge
 
 volumes:
-  postgres_data:
+  postgres_data_v2:
   redis_data:
+  prometheus_data:
+  grafana_data:

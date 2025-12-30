@@ -1,0 +1,9 @@
+﻿aws : 
+At line:1 char:1
++ aws dynamodb scan --table-name terraform-state-lock --output json 2>& ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+An error occurred (ResourceNotFoundException) when calling the Scan operation: Requested resource not 
+found

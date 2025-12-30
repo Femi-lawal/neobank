@@ -1,26 +1,28 @@
 # Build stage
-FROM golang:alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
 # Install dependencies
 RUN apk add --no-cache git
 
-# Copy go workspace files
-COPY go.work go.work.sum ./
+# Disable Go workspace for isolated service build
+ENV GOWORK=off
+
+# Copy go module files (without go.work to avoid cross-service dependencies)
 COPY shared-lib/go.mod shared-lib/go.sum ./shared-lib/
 COPY ledger-service/go.mod ledger-service/go.sum ./ledger-service/
 
 # Download dependencies
 RUN cd shared-lib && go mod download
-RUN cd ledger-service && go mod download
+RUN cd ledger-service && go mod download -x
 
 # Copy source code
 COPY shared-lib/ ./shared-lib/
 COPY ledger-service/ ./ledger-service/
 
-# Build the application
-RUN cd ledger-service && CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /app/bin/ledger-service ./cmd/main.go
+# Build the application with -mod=mod to handle local module replacements
+RUN cd ledger-service && CGO_ENABLED=0 GOOS=linux go build -mod=mod -a -installsuffix cgo -o /app/bin/ledger-service ./cmd/main.go
 
 # Runtime stage
 FROM alpine:3.19

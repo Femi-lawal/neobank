@@ -1,21 +1,25 @@
 # Build stage
-FROM golang:alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
 RUN apk add --no-cache git
 
-COPY go.work go.work.sum ./
+# Disable Go workspace for isolated service build
+ENV GOWORK=off
+
+# Copy go module files (without go.work to avoid cross-service dependencies)
 COPY shared-lib/go.mod shared-lib/go.sum ./shared-lib/
 COPY card-service/go.mod card-service/go.sum ./card-service/
 
 RUN cd shared-lib && go mod download
-RUN cd card-service && go mod download
+RUN cd card-service && go mod download -x
 
 COPY shared-lib/ ./shared-lib/
 COPY card-service/ ./card-service/
 
-RUN cd card-service && CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /app/bin/card-service ./cmd/main.go
+# Build with -mod=mod to handle local module replacements
+RUN cd card-service && CGO_ENABLED=0 GOOS=linux go build -mod=mod -a -installsuffix cgo -o /app/bin/card-service ./cmd/main.go
 
 # Runtime stage
 FROM alpine:3.19

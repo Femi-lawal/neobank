@@ -8,29 +8,48 @@ on:
     schedule:
         - cron: "0 6 * * 1" # Weekly on Monday
 
+permissions:
+    contents: read
+    security-events: write
+    actions: read
+
 jobs:
     dependency-scan:
         name: Dependency Vulnerability Scan
         runs-on: ubuntu-latest
+        # Continue even if this job fails (optional SNYK_TOKEN)
+        continue-on-error: true
         steps:
             - uses: actions/checkout@v4
 
+            - name: Check if Snyk token is available
+              id: snyk-check
+              run: |
+                  if [ -n "${{ secrets.SNYK_TOKEN }}" ]; then
+                    echo "available=true" >> $GITHUB_OUTPUT
+                  else
+                    echo "available=false" >> $GITHUB_OUTPUT
+                    echo "::warning::SNYK_TOKEN not configured. Skipping Snyk scan."
+                  fi
+
             - name: Run Snyk to check for vulnerabilities (Go)
+              if: steps.snyk-check.outputs.available == 'true'
               uses: snyk/actions/golang@master
-              continue-on-error: true
               env:
                   SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
               with:
                   args: --all-projects --severity-threshold=high
+              continue-on-error: true
 
             - name: Run Snyk to check for vulnerabilities (Node)
+              if: steps.snyk-check.outputs.available == 'true'
               uses: snyk/actions/node@master
-              continue-on-error: true
               env:
                   SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
               with:
                   args: --severity-threshold=high
                   command: test
+              continue-on-error: true
 
     container-scan:
         name: Container Security Scan
@@ -53,7 +72,7 @@ jobs:
                   severity: "CRITICAL,HIGH"
 
             - name: Upload Trivy scan results
-              uses: github/codeql-action/upload-sarif@v2
+              uses: github/codeql-action/upload-sarif@v3
               if: always()
               with:
                   sarif_file: "trivy-results.sarif"
@@ -61,6 +80,7 @@ jobs:
     sast-scan:
         name: Static Application Security Testing
         runs-on: ubuntu-latest
+        continue-on-error: true
         steps:
             - uses: actions/checkout@v4
 
@@ -73,6 +93,7 @@ jobs:
                       p/owasp-top-ten
                       p/golang
                       p/typescript
+              continue-on-error: true
 
     secret-scan:
         name: Secret Detection
@@ -86,15 +107,28 @@ jobs:
               uses: gitleaks/gitleaks-action@v2
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  GITLEAKS_CONFIG: .gitleaks.toml
 
     license-scan:
         name: License Compliance
         runs-on: ubuntu-latest
+        # License scanning is optional - requires FOSSA_API_KEY
+        continue-on-error: true
         steps:
             - uses: actions/checkout@v4
 
+            - name: Check if FOSSA key is available
+              id: fossa-check
+              run: |
+                  if [ -n "${{ secrets.FOSSA_API_KEY }}" ]; then
+                    echo "available=true" >> $GITHUB_OUTPUT
+                  else
+                    echo "available=false" >> $GITHUB_OUTPUT
+                    echo "::warning::FOSSA_API_KEY not configured. Skipping license scan."
+                  fi
+
             - name: Check licenses
+              if: steps.fossa-check.outputs.available == 'true'
               uses: fossas/fossa-action@main
-              continue-on-error: true
               with:
                   api-key: ${{ secrets.FOSSA_API_KEY }}

@@ -1,0 +1,213 @@
+# OPA Gatekeeper Constraints
+# Applies policy templates to NeoBank resources
+---
+# Constraint: Require labels for all deployments
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredLabels
+metadata:
+  name: require-deployment-labels
+spec:
+  enforcementAction: deny
+  match:
+    kinds:
+      - apiGroups: ["apps"]
+        kinds: ["Deployment"]
+    namespaces: ["neobank"]
+  parameters:
+    labels:
+      - "app"
+      - "app.kubernetes.io/name"
+      - "app.kubernetes.io/part-of"
+---
+# Constraint: Require cost allocation labels
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sCostAllocationLabels
+metadata:
+  name: require-cost-labels
+spec:
+  enforcementAction: warn
+  match:
+    kinds:
+      - apiGroups: ["apps"]
+        kinds: ["Deployment"]
+      - apiGroups: [""]
+        kinds: ["Service"]
+    namespaces: ["neobank"]
+  parameters:
+    labels:
+      - "cost-center"
+      - "team"
+---
+# Constraint: Require non-root containers in neobank
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sPSNonRoot
+metadata:
+  name: require-nonroot-neobank
+spec:
+  enforcementAction: deny
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+      - apiGroups: ["apps"]
+        kinds: ["Deployment", "ReplicaSet", "StatefulSet"]
+    namespaces: ["neobank"]
+  parameters:
+    exemptImages:
+      - "docker.io/istio/"
+      - "gcr.io/istio/"
+---
+# Constraint: Block privileged containers
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sPSPPrivilegedContainer
+metadata:
+  name: deny-privileged-containers
+spec:
+  enforcementAction: deny
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+      - istio-system
+      - gatekeeper-system
+---
+# Constraint: Require resource limits
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sContainerResources
+metadata:
+  name: require-container-resources
+spec:
+  enforcementAction: deny
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+      - apiGroups: ["apps"]
+        kinds: ["Deployment"]
+    namespaces: ["neobank"]
+  parameters:
+    requireLimits: true
+    requireRequests: true
+    exemptImages:
+      - "docker.io/istio/"
+      - "gcr.io/istio/"
+---
+# Constraint: Allowed container registries
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sAllowedRepos
+metadata:
+  name: allowed-repos-neobank
+spec:
+  enforcementAction: warn
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    namespaces: ["neobank"]
+  parameters:
+    repos:
+      - "neobank/"
+      - "docker.io/neobank/"
+      - "ghcr.io/neobank/"
+      - "docker.io/istio/"
+      - "gcr.io/istio/"
+      - "quay.io/"
+---
+# Constraint: Block NodePort services
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sBlockNodePort
+metadata:
+  name: block-nodeport-services
+spec:
+  enforcementAction: deny
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Service"]
+    namespaces: ["neobank"]
+---
+# Constraint: Deny host network
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sPSPHostNetwork
+metadata:
+  name: deny-host-network
+spec:
+  enforcementAction: deny
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+      - istio-system
+---
+# Constraint: Require read-only root filesystem
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sReadOnlyRootFilesystem
+metadata:
+  name: require-readonly-rootfs
+spec:
+  enforcementAction: warn
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    namespaces: ["neobank"]
+  parameters:
+    exemptImages:
+      - "docker.io/istio/"
+      - "gcr.io/istio/"
+---
+# Constraint: Block latest tag
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sDisallowedTags
+metadata:
+  name: block-latest-tag
+spec:
+  enforcementAction: warn
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    namespaces: ["neobank"]
+  parameters:
+    tags:
+      - "latest"
+---
+# Constraint: Require liveness and readiness probes
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequireProbes
+metadata:
+  name: require-health-probes
+spec:
+  enforcementAction: warn
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    namespaces: ["neobank"]
+  parameters:
+    probes:
+      - readinessProbe
+      - livenessProbe
+    exemptImages:
+      - "docker.io/istio/"
+      - "gcr.io/istio/"
+---
+# Constraint: Require service labels
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredLabels
+metadata:
+  name: require-service-labels
+spec:
+  enforcementAction: warn
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Service"]
+    namespaces: ["neobank"]
+  parameters:
+    labels:
+      - "app"

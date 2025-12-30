@@ -1,0 +1,170 @@
+---
+# NeoBank - Setup Build Agents Playbook
+# Purpose: Configure CI/CD build agents (Jenkins workers, GitHub runners)
+#
+# This is the ONLY deployment-related task Ansible should do:
+# - Install Docker, build tools
+# - Register agents with CI systems
+# - Configure credentials for ECR access
+#
+# IMPORTANT: This does NOT deploy applications to Kubernetes
+# Argo CD handles all K8s deployments via GitOps
+
+- name: Setup CI Build Agents
+  hosts: build_agents
+  become: yes
+
+  vars:
+    docker_version: "24.0"
+    go_version: "1.21.5"
+    node_version: "20"
+    trivy_version: "0.48.0"
+    cosign_version: "2.2.2"
+
+  tasks:
+    # ===================================
+    # System Prerequisites
+    # ===================================
+    - name: Update system packages
+      apt:
+        update_cache: yes
+        upgrade: dist
+      when: ansible_os_family == "Debian"
+
+    - name: Install required packages
+      package:
+        name:
+          - git
+          - curl
+          - wget
+          - unzip
+          - jq
+          - ca-certificates
+          - gnupg
+          - lsb-release
+        state: present
+
+    # ===================================
+    # Docker Installation
+    # ===================================
+    - name: Add Docker GPG key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Add Docker repository
+      apt_repository:
+        repo: "deb https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Install Docker
+      package:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+        state: present
+
+    - name: Start Docker service
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Add agent user to docker group
+      user:
+        name: "{{ agent_user | default('jenkins') }}"
+        groups: docker
+        append: yes
+
+    # ===================================
+    # Go Installation (for backend builds)
+    # ===================================
+    - name: Download Go
+      get_url:
+        url: "https://go.dev/dl/go{{ go_version }}.linux-amd64.tar.gz"
+        dest: /tmp/go.tar.gz
+
+    - name: Extract Go
+      unarchive:
+        src: /tmp/go.tar.gz
+        dest: /usr/local
+        remote_src: yes
+
+    - name: Set Go environment
+      copy:
+        content: |
+          export PATH=$PATH:/usr/local/go/bin
+          export GOPATH=$HOME/go
+          export PATH=$PATH:$GOPATH/bin
+        dest: /etc/profile.d/go.sh
+        mode: "0644"
+
+    # ===================================
+    # Node.js Installation (for frontend)
+    # ===================================
+    - name: Add NodeSource repository
+      shell: |
+        curl -fsSL https://deb.nodesource.com/setup_{{ node_version }}.x | bash -
+      when: ansible_os_family == "Debian"
+
+    - name: Install Node.js
+      package:
+        name: nodejs
+        state: present
+
+    # ===================================
+    # Security Scanning Tools
+    # ===================================
+    - name: Install Trivy
+      shell: |
+        wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor -o /usr/share/keyrings/trivy.gpg
+        echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | tee /etc/apt/sources.list.d/trivy.list
+        apt-get update && apt-get install -y trivy
+      when: ansible_os_family == "Debian"
+
+    - name: Install Cosign
+      get_url:
+        url: "https://github.com/sigstore/cosign/releases/download/v{{ cosign_version }}/cosign-linux-amd64"
+        dest: /usr/local/bin/cosign
+        mode: "0755"
+
+    - name: Install Syft (SBOM generation)
+      shell: |
+        curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+
+    # ===================================
+    # AWS CLI for ECR Access
+    # ===================================
+    - name: Install AWS CLI v2
+      shell: |
+        curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+        unzip -o /tmp/awscliv2.zip -d /tmp
+        /tmp/aws/install --update
+
+    # ===================================
+    # GitHub CLI (for creating PRs)
+    # ===================================
+    - name: Install GitHub CLI
+      shell: |
+        curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list
+        apt-get update && apt-get install -y gh
+      when: ansible_os_family == "Debian"
+
+    # ===================================
+    # Kustomize (for manifest updates)
+    # ===================================
+    - name: Install Kustomize
+      shell: |
+        curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+        mv kustomize /usr/local/bin/
+
+  handlers:
+    - name: restart docker
+      service:
+        name: docker
+        state: restarted

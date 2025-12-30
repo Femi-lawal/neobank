@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import { Plus, ArrowUpRight, Wallet, CreditCard, Send, Receipt, ArrowDownToLine, Eye, EyeOff, TrendingUp, PiggyBank, Building } from 'lucide-react';
+import { Plus, ArrowUpRight, Wallet, CreditCard, Send, Receipt, ArrowDownToLine, Eye, EyeOff, TrendingUp, PiggyBank, Building, LucideIcon } from 'lucide-react';
 import { AreaChart, Area, ResponsiveContainer } from 'recharts';
 import { Account } from '../types';
 import { useTheme } from '../context/ThemeContext';
@@ -25,7 +25,7 @@ const quickActions = [
 ];
 
 // Account type to color mapping
-const accountTypeColors: Record<string, { gradient: string; icon: any; bg: string }> = {
+const accountTypeColors: Record<string, { gradient: string; icon: LucideIcon; bg: string }> = {
     'ASSET': { gradient: 'from-emerald-500 to-teal-500', icon: Wallet, bg: 'bg-emerald-500/10' },
     'SAVINGS': { gradient: 'from-blue-500 to-indigo-500', icon: PiggyBank, bg: 'bg-blue-500/10' },
     'CHECKING': { gradient: 'from-purple-500 to-pink-500', icon: Building, bg: 'bg-purple-500/10' },
@@ -47,7 +47,12 @@ export default function Dashboard() {
     const isDark = theme === 'dark';
 
     useEffect(() => {
-        fetch('/api/ledger/accounts')
+        const token = localStorage.getItem('token');
+        fetch('/api/ledger/accounts', {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        })
             .then((res) => {
                 if (res.status === 401) router.push('/login');
                 return res.json();
@@ -56,12 +61,16 @@ export default function Dashboard() {
                 if (Array.isArray(data)) setAccounts(data);
             })
             .catch((err) => console.error(err));
-    }, []);
+    }, [router]);
 
     const createMockAccount = async () => {
+        const token = localStorage.getItem('token');
         await fetch('/api/ledger/accounts', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify({
                 account_number: "ACC-" + Math.floor(Math.random() * 10000),
                 name: "New Checking",
@@ -69,12 +78,16 @@ export default function Dashboard() {
                 type: "ASSET"
             })
         });
-        const res = await fetch('/api/ledger/accounts');
+        const res = await fetch('/api/ledger/accounts', {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
         const data = await res.json();
         setAccounts(data);
     };
 
-    const totalBalance = accounts.reduce((sum, acc) => sum + parseFloat(acc.CachedBalance), 0);
+    const totalBalance = accounts.reduce((sum, acc) => sum + parseFloat(acc.balance || '0'), 0);
 
     const formatBalance = (amount: number) => {
         if (!showBalance) return '••••••';
@@ -89,7 +102,7 @@ export default function Dashboard() {
                     <h1 className={`text-2xl sm:text-3xl font-bold mb-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
                         {getGreeting()}, Alex 👋
                     </h1>
-                    <p className={isDark ? 'text-surface-400' : 'text-slate-500'}>Here's what's happening with your finances.</p>
+                    <p className={isDark ? 'text-surface-400' : 'text-slate-500'}>Here&apos;s what&apos;s happening with your finances.</p>
                 </div>
                 <div className="flex gap-3">
                     <Button variant="secondary" size="md" onClick={() => router.push('/transfers')}>
@@ -198,26 +211,26 @@ export default function Dashboard() {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {accounts.map((acc, i) => {
-                        const accountType = (acc.Type || 'ASSET').toUpperCase();
+                        const accountType = (acc.type || 'ASSET').toUpperCase();
                         const typeConfig = accountTypeColors[accountType] || accountTypeColors['ASSET'];
                         const Icon = typeConfig.icon;
 
                         return (
-                            <Card key={acc.ID} delay={i * 0.1} className="hover:border-gradient-purple/50 transition-colors cursor-pointer group" data-testid="account-card">
+                            <Card key={acc.id} delay={i * 0.1} className="hover:border-gradient-purple/50 transition-colors cursor-pointer group" data-testid="account-card">
                                 <div className="flex justify-between items-start mb-6">
                                     <div className={`h-10 w-10 rounded-full flex items-center justify-center transition-all ${typeConfig.bg} group-hover:scale-110`}>
                                         <Icon size={20} className={`bg-gradient-to-br ${typeConfig.gradient}`} style={{ color: typeConfig.gradient.includes('emerald') ? '#10b981' : typeConfig.gradient.includes('blue') ? '#3b82f6' : '#a855f7' }} />
                                     </div>
                                     <span className={`text-xs font-mono px-2 py-1 rounded-full ${isDark ? 'bg-surface-800 text-surface-400' : 'bg-slate-100 text-slate-500'}`}>
-                                        {acc.CurrencyCode}
+                                        {acc.currency_code}
                                     </span>
                                 </div>
                                 <div>
-                                    <h3 className={`font-medium mb-1 ${isDark ? 'text-surface-300' : 'text-slate-600'}`}>{acc.Name}</h3>
+                                    <h3 className={`font-medium mb-1 ${isDark ? 'text-surface-300' : 'text-slate-600'}`}>{acc.name}</h3>
                                     <div className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                                        {formatBalance(parseFloat(acc.CachedBalance))}
+                                        {formatBalance(parseFloat(acc.balance || '0'))}
                                     </div>
-                                    <p className={`text-xs mt-2 font-mono truncate ${isDark ? 'text-surface-600' : 'text-slate-400'}`}>{acc.ID}</p>
+                                    <p className={`text-xs mt-2 font-mono truncate ${isDark ? 'text-surface-600' : 'text-slate-400'}`}>{acc.id}</p>
                                 </div>
                             </Card>
                         );

@@ -1,0 +1,200 @@
+---
+# NeoBank - CIS Benchmark Security Hardening Playbook
+# Purpose: Apply security baselines to VMs/bare-metal hosts
+#
+# Applies CIS benchmarks for:
+# - SSH hardening
+# - Firewall rules
+# - User/password policies
+# - Audit logging
+# - File permissions
+
+- name: Apply Security Hardening
+  hosts: all
+  become: yes
+
+  vars:
+    ssh_port: 22
+    allowed_ssh_users:
+      - "{{ admin_user | default('admin') }}"
+    fail2ban_bantime: 3600
+    fail2ban_maxretry: 5
+
+  tasks:
+    # ===================================
+    # SSH Hardening
+    # ===================================
+    - name: Configure SSH daemon
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        state: present
+      loop:
+        - { regexp: "^#?PermitRootLogin", line: "PermitRootLogin no" }
+        - {
+            regexp: "^#?PasswordAuthentication",
+            line: "PasswordAuthentication no",
+          }
+        - {
+            regexp: "^#?PubkeyAuthentication",
+            line: "PubkeyAuthentication yes",
+          }
+        - { regexp: "^#?PermitEmptyPasswords", line: "PermitEmptyPasswords no" }
+        - { regexp: "^#?X11Forwarding", line: "X11Forwarding no" }
+        - { regexp: "^#?MaxAuthTries", line: "MaxAuthTries 3" }
+        - { regexp: "^#?ClientAliveInterval", line: "ClientAliveInterval 300" }
+        - { regexp: "^#?ClientAliveCountMax", line: "ClientAliveCountMax 2" }
+        - { regexp: "^#?Protocol", line: "Protocol 2" }
+      notify: restart sshd
+
+    - name: Set allowed SSH users
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "^#?AllowUsers"
+        line: "AllowUsers {{ allowed_ssh_users | join(' ') }}"
+        state: present
+      notify: restart sshd
+
+    # ===================================
+    # Firewall Configuration
+    # ===================================
+    - name: Install UFW
+      package:
+        name: ufw
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Set UFW default policies
+      ufw:
+        direction: "{{ item.direction }}"
+        policy: "{{ item.policy }}"
+      loop:
+        - { direction: "incoming", policy: "deny" }
+        - { direction: "outgoing", policy: "allow" }
+
+    - name: Allow SSH
+      ufw:
+        rule: allow
+        port: "{{ ssh_port }}"
+        proto: tcp
+
+    - name: Enable UFW
+      ufw:
+        state: enabled
+
+    # ===================================
+    # Fail2Ban (Brute Force Protection)
+    # ===================================
+    - name: Install Fail2Ban
+      package:
+        name: fail2ban
+        state: present
+
+    - name: Configure Fail2Ban for SSH
+      copy:
+        content: |
+          [sshd]
+          enabled = true
+          port = {{ ssh_port }}
+          filter = sshd
+          logpath = /var/log/auth.log
+          maxretry = {{ fail2ban_maxretry }}
+          bantime = {{ fail2ban_bantime }}
+        dest: /etc/fail2ban/jail.local
+        mode: "0644"
+      notify: restart fail2ban
+
+    # ===================================
+    # Password Policies
+    # ===================================
+    - name: Set password aging
+      lineinfile:
+        path: /etc/login.defs
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+      loop:
+        - { regexp: "^PASS_MAX_DAYS", line: "PASS_MAX_DAYS 90" }
+        - { regexp: "^PASS_MIN_DAYS", line: "PASS_MIN_DAYS 7" }
+        - { regexp: "^PASS_WARN_AGE", line: "PASS_WARN_AGE 14" }
+
+    # ===================================
+    # Audit Logging
+    # ===================================
+    - name: Install auditd
+      package:
+        name: auditd
+        state: present
+
+    - name: Configure audit rules
+      copy:
+        content: |
+          # Log all commands executed by root
+          -a always,exit -F arch=b64 -F euid=0 -S execve -k root-commands
+
+          # Log changes to /etc/passwd and /etc/shadow
+          -w /etc/passwd -p wa -k identity
+          -w /etc/shadow -p wa -k identity
+          -w /etc/group -p wa -k identity
+
+          # Log SSH key changes
+          -w /root/.ssh -p wa -k ssh_keys
+
+          # Log sudo usage
+          -w /etc/sudoers -p wa -k sudoers
+          -w /var/log/sudo.log -p wa -k sudo_log
+        dest: /etc/audit/rules.d/neobank.rules
+        mode: "0640"
+      notify: restart auditd
+
+    - name: Enable auditd
+      service:
+        name: auditd
+        state: started
+        enabled: yes
+
+    # ===================================
+    # Kernel Hardening
+    # ===================================
+    - name: Apply kernel security parameters
+      sysctl:
+        name: "{{ item.name }}"
+        value: "{{ item.value }}"
+        state: present
+        reload: yes
+      loop:
+        - { name: "net.ipv4.ip_forward", value: "0" }
+        - { name: "net.ipv4.conf.all.send_redirects", value: "0" }
+        - { name: "net.ipv4.conf.default.send_redirects", value: "0" }
+        - { name: "net.ipv4.conf.all.accept_redirects", value: "0" }
+        - { name: "net.ipv4.conf.default.accept_redirects", value: "0" }
+        - { name: "net.ipv4.icmp_ignore_bogus_error_responses", value: "1" }
+        - { name: "kernel.randomize_va_space", value: "2" }
+
+    # ===================================
+    # Remove Unnecessary Packages
+    # ===================================
+    - name: Remove unnecessary packages
+      package:
+        name:
+          - telnet
+          - rsh-client
+          - rsh-server
+        state: absent
+      ignore_errors: yes
+
+  handlers:
+    - name: restart sshd
+      service:
+        name: sshd
+        state: restarted
+
+    - name: restart fail2ban
+      service:
+        name: fail2ban
+        state: restarted
+
+    - name: restart auditd
+      service:
+        name: auditd
+        state: restarted

@@ -1,0 +1,133 @@
+# OPA Gatekeeper Audit Configuration
+# Configures policy audit and reporting
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gatekeeper-audit-config
+  namespace: gatekeeper-system
+  labels:
+    app.kubernetes.io/name: gatekeeper-audit
+data:
+  audit-interval: "60"
+  constraint-violations-limit: "100"
+  audit-from-cache: "true"
+---
+# Prometheus ServiceMonitor for policy metrics
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: gatekeeper-metrics
+  namespace: gatekeeper-system
+  labels:
+    app.kubernetes.io/name: gatekeeper
+spec:
+  selector:
+    matchLabels:
+      gatekeeper.sh/system: "yes"
+  endpoints:
+    - port: metrics
+      interval: 30s
+      path: /metrics
+---
+# PrometheusRule for policy alerts
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: gatekeeper-alerts
+  namespace: gatekeeper-system
+  labels:
+    app.kubernetes.io/name: gatekeeper
+spec:
+  groups:
+    - name: gatekeeper.rules
+      rules:
+        - alert: GatekeeperPolicyViolation
+          expr: |
+            increase(gatekeeper_violations{enforcement_action="deny"}[5m]) > 0
+          for: 1m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "OPA Gatekeeper policy violation detected"
+            description: "Policy {{ $labels.constraint_name }} has been violated {{ $value }} times in the last 5 minutes"
+
+        - alert: GatekeeperHighViolationRate
+          expr: |
+            sum(rate(gatekeeper_violations[10m])) > 10
+          for: 5m
+          labels:
+            severity: critical
+            team: platform
+          annotations:
+            summary: "High rate of policy violations"
+            description: "More than 10 policy violations per minute detected"
+
+        - alert: GatekeeperControllerDown
+          expr: |
+            up{job="gatekeeper-controller-manager"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            team: platform
+          annotations:
+            summary: "Gatekeeper controller is down"
+            description: "The OPA Gatekeeper controller has been down for 5 minutes"
+
+        - alert: GatekeeperAuditFailure
+          expr: |
+            gatekeeper_audit_last_run_end_time == 0
+          for: 10m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "Gatekeeper audit not running"
+            description: "The OPA Gatekeeper audit has not completed in the last 10 minutes"
+---
+# CronJob for policy compliance reporting
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: policy-compliance-report
+  namespace: gatekeeper-system
+spec:
+  schedule: "0 6 * * *" # Daily at 6 AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: gatekeeper-admin
+          containers:
+            - name: reporter
+              image: bitnami/kubectl:latest
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  echo "=== OPA Gatekeeper Policy Compliance Report ==="
+                  echo "Generated: $(date -u)"
+                  echo ""
+
+                  echo "=== Constraint Templates ==="
+                  kubectl get constrainttemplates -o custom-columns=NAME:.metadata.name,AGE:.metadata.creationTimestamp
+                  echo ""
+
+                  echo "=== Active Constraints ==="
+                  for ct in $(kubectl get constrainttemplates -o jsonpath='{.items[*].metadata.name}'); do
+                    echo "--- $ct ---"
+                    kubectl get $ct -o custom-columns=NAME:.metadata.name,ENFORCEMENT:.spec.enforcementAction,VIOLATIONS:.status.totalViolations 2>/dev/null || echo "No constraints of type $ct"
+                  done
+                  echo ""
+
+                  echo "=== Violations Summary ==="
+                  kubectl get constraints -o json | jq -r '.items[] | select(.status.totalViolations > 0) | "\(.metadata.name): \(.status.totalViolations) violations"' 2>/dev/null || echo "No violations found"
+                  echo ""
+
+                  echo "=== Detailed Violations ==="
+                  kubectl get constraints -o json | jq -r '.items[] | select(.status.violations) | .status.violations[] | "[\(.constraint)] \(.message)"' 2>/dev/null | head -100 || echo "No detailed violations"
+
+                  echo ""
+                  echo "=== Report Complete ==="
+          restartPolicy: OnFailure

@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frontend-config
+data:
+  SERVICE_NAME: frontend
+  LOG_LEVEL: info
+  LOG_FORMAT: json
+  NEXT_TELEMETRY_DISABLED: "1"

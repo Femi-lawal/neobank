@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"os"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/femi-lawal/new_bank/backend/shared-lib/pkg/logger"
 	"github.com/femi-lawal/new_bank/backend/shared-lib/pkg/metrics"
 	"github.com/femi-lawal/new_bank/backend/shared-lib/pkg/middleware"
+	"github.com/femi-lawal/new_bank/backend/shared-lib/pkg/tracing"
 	"github.com/gin-gonic/gin"
 )
 
@@ -23,6 +25,14 @@ func main() {
 	logger.InitLogger(serviceName, true)
 	slog.Info("Starting Identity Service")
 
+	// Initialize Tracing
+	tp, err := tracing.InitTracing(context.Background(), tracing.DefaultConfig(serviceName))
+	if err != nil {
+		slog.Warn("Failed to initialize tracing", "error", err)
+	} else {
+		defer func() { _ = tp.Shutdown(context.Background()) }()
+	}
+
 	// Connect to Database
 	dbConfig := db.Config{
 		Host:     getEnv("DB_HOST", "localhost"),
@@ -30,7 +40,7 @@ func main() {
 		User:     getEnv("DB_USER", "user"),
 		Password: getEnv("DB_PASSWORD", "password"),
 		DBName:   getEnv("DB_NAME", "newbank_core"),
-		SSLMode:  "disable",
+		SSLMode:  getEnv("DB_SSLMODE", "disable"),
 	}
 
 	database, err := db.Connect(dbConfig)
@@ -46,7 +56,7 @@ func main() {
 
 	// Wiring
 	userRepo := repository.NewUserRepository(database)
-	jwtSecret := getEnv("JWT_SECRET", "my-secret-key")
+	jwtSecret := requireEnv("JWT_SECRET")
 	authService := service.NewAuthService(userRepo, jwtSecret)
 	authHandler := handler.NewAuthHandler(authService)
 
@@ -58,6 +68,7 @@ func main() {
 	// ============================================
 	r.Use(apperrors.ErrorMiddleware())               // Panic recovery with structured errors
 	r.Use(middleware.RequestLogger(serviceName))     // Request logging with request ID
+	r.Use(middleware.Tracing(serviceName))           // OpenTelemetry tracing
 	r.Use(middleware.CORS())                         // CORS handling
 	r.Use(middleware.RateLimit())                    // Rate limiting
 	r.Use(metrics.PrometheusMiddleware(serviceName)) // Prometheus metrics
@@ -109,4 +120,14 @@ func getEnv(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+// requireEnv returns the value of an environment variable or panics if not set.
+// Use this for security-critical values that must not have defaults.
+func requireEnv(key string) string {
+	if value, exists := os.LookupEnv(key); exists && value != "" {
+		return value
+	}
+	slog.Error("Required environment variable not set", "key", key)
+	panic("Required environment variable " + key + " is not set")
 }

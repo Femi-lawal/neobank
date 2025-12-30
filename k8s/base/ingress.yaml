@@ -3,7 +3,14 @@ kind: Ingress
 metadata:
   name: neobank-ingress
   namespace: neobank
+  labels:
+    app.kubernetes.io/name: neobank
+    app.kubernetes.io/part-of: neobank
+    app.kubernetes.io/component: ingress
   annotations:
+    description: "Main ingress for NeoBank services"
+    owner: "platform-team"
+    cost-center: "engineering"
     nginx.ingress.kubernetes.io/rewrite-target: /
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
     # Enable CORS

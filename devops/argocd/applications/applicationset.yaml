@@ -1,0 +1,167 @@
+# NeoBank ApplicationSet
+# Automatically creates applications for all environments and services
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: neobank-services
+  namespace: argocd
+spec:
+  generators:
+    # Matrix generator: environments x services
+    - matrix:
+        generators:
+          # Environments
+          - list:
+              elements:
+                - env: dev
+                  namespace: neobank-dev
+                  autoSync: true
+                  prune: true
+                - env: staging
+                  namespace: neobank-staging
+                  autoSync: true
+                  prune: true
+                - env: prod
+                  namespace: neobank-prod
+                  autoSync: false # Manual sync for prod
+                  prune: false # Don't auto-prune in prod
+          # Services
+          - list:
+              elements:
+                - service: identity-service
+                  path: services/identity-service
+                - service: ledger-service
+                  path: services/ledger-service
+                - service: payment-service
+                  path: services/payment-service
+                - service: card-service
+                  path: services/card-service
+                - service: product-service
+                  path: services/product-service
+                - service: frontend
+                  path: services/frontend
+
+  template:
+    metadata:
+      name: "{{service}}-{{env}}"
+      namespace: argocd
+      labels:
+        app.kubernetes.io/name: "{{service}}"
+        app.kubernetes.io/part-of: neobank
+        environment: "{{env}}"
+      annotations:
+        # Notifications
+        notifications.argoproj.io/subscribe.on-sync-succeeded.slack: neobank-deployments
+        notifications.argoproj.io/subscribe.on-sync-failed.slack: neobank-alerts
+        notifications.argoproj.io/subscribe.on-health-degraded.slack: neobank-alerts
+    spec:
+      project: neobank
+
+      source:
+        repoURL: git@github.com:your-org/neobank-manifests.git
+        targetRevision: "{{env}}" # Branch per environment
+        path: "{{path}}/{{env}}"
+
+        # Kustomize configuration
+        kustomize:
+          namePrefix: ""
+          commonLabels:
+            environment: "{{env}}"
+          images:
+            - "your-account.dkr.ecr.us-east-1.amazonaws.com/neobank/{{service}}"
+
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "{{namespace}}"
+
+      # Sync policy
+      syncPolicy:
+        automated:
+          prune: "{{prune}}"
+          selfHeal: true
+          allowEmpty: false
+        syncOptions:
+          - CreateNamespace=false
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true
+          - ApplyOutOfSyncOnly=true
+          - Validate=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 5s
+            factor: 2
+            maxDuration: 3m
+
+      # Health checks
+      ignoreDifferences:
+        - group: apps
+          kind: Deployment
+          jsonPointers:
+            - /spec/replicas # Ignore replica differences (HPA manages)
+        - group: autoscaling
+          kind: HorizontalPodAutoscaler
+          jsonPointers:
+            - /spec/minReplicas
+            - /spec/maxReplicas
+
+      # Revision history limit
+      revisionHistoryLimit: 10
+---
+# Infrastructure ApplicationSet (monitoring, ingress, etc.)
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: neobank-infrastructure
+  namespace: argocd
+spec:
+  generators:
+    - list:
+        elements:
+          - name: external-secrets
+            namespace: external-secrets
+            chart: external-secrets
+            repoURL: https://charts.external-secrets.io
+            targetRevision: 0.9.x
+          - name: prometheus-stack
+            namespace: monitoring
+            chart: kube-prometheus-stack
+            repoURL: https://prometheus-community.github.io/helm-charts
+            targetRevision: 55.x
+          - name: loki
+            namespace: monitoring
+            chart: loki-stack
+            repoURL: https://grafana.github.io/helm-charts
+            targetRevision: 2.x
+          - name: ingress-nginx
+            namespace: ingress-nginx
+            chart: ingress-nginx
+            repoURL: https://kubernetes.github.io/ingress-nginx
+            targetRevision: 4.x
+
+  template:
+    metadata:
+      name: "infra-{{name}}"
+      namespace: argocd
+    spec:
+      project: neobank
+
+      source:
+        repoURL: "{{repoURL}}"
+        targetRevision: "{{targetRevision}}"
+        chart: "{{chart}}"
+        helm:
+          releaseName: "{{name}}"
+          valueFiles:
+            - values.yaml
+
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "{{namespace}}"
+
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true

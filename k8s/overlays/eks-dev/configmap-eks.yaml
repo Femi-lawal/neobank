@@ -1,0 +1,37 @@
+# ConfigMap for EKS dev environment - using AWS RDS and ElastiCache
+# NOTE: Substitute ${RDS_ENDPOINT} and ${REDIS_ENDPOINT} before deployment
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: neobank-config
+  namespace: neobank
+data:
+  # AWS RDS PostgreSQL - substitute RDS_ENDPOINT before deployment
+  DB_HOST: "${RDS_ENDPOINT}"
+  DB_PORT: "5432"
+  DB_NAME: "neobank"
+  DB_SSLMODE: "require"
+
+  # AWS ElastiCache Redis - substitute REDIS_ENDPOINT before deployment
+  REDIS_ADDR: "${REDIS_ENDPOINT}"
+  REDIS_TLS: "true"
+
+  # Service URLs (for inter-service communication within cluster)
+  IDENTITY_SERVICE_URL: "http://identity-service:8081"
+  LEDGER_SERVICE_URL: "http://ledger-service:8082"
+  PAYMENT_SERVICE_URL: "http://payment-service:8083"
+  PRODUCT_SERVICE_URL: "http://product-service:8084"
+  CARD_SERVICE_URL: "http://card-service:8085"
+
+  # Environment
+  ENVIRONMENT: "dev"
+  LOG_LEVEL: "info"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: neobank-frontend-config
+  namespace: neobank
+data:
+  NEXT_PUBLIC_API_URL: "/api"
+  NEXT_PUBLIC_ENVIRONMENT: "dev"

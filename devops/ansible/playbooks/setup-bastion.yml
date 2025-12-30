@@ -1,0 +1,157 @@
+---
+# NeoBank - Setup Bastion Host Playbook
+# Purpose: Configure bastion/jump hosts for secure cluster access
+#
+# Bastions provide:
+# - SSH jump access to private subnets
+# - kubectl proxy for developers (not for CD!)
+# - Session recording and audit logging
+
+- name: Setup Bastion Host
+  hosts: bastions
+  become: yes
+
+  vars:
+    bastion_users: []
+    session_recording: true
+    kubectl_version: "1.28.4"
+
+  tasks:
+    # ===================================
+    # Base Security (import hardening)
+    # ===================================
+    - name: Import security hardening
+      include_tasks: harden-hosts.yml
+
+    # ===================================
+    # Session Recording with asciinema
+    # ===================================
+    - name: Install asciinema for session recording
+      package:
+        name: asciinema
+        state: present
+      when: session_recording
+
+    - name: Configure shell to record sessions
+      copy:
+        content: |
+          # Auto-record all SSH sessions
+          if [[ -n "$SSH_CONNECTION" ]] && [[ -z "$ASCIINEMA_REC" ]]; then
+            export ASCIINEMA_REC=1
+            LOGDIR="/var/log/sessions"
+            mkdir -p "$LOGDIR"
+            LOGFILE="$LOGDIR/$(whoami)_$(date +%Y%m%d_%H%M%S).cast"
+            asciinema rec -q "$LOGFILE"
+          fi
+        dest: /etc/profile.d/session-recording.sh
+        mode: "0644"
+      when: session_recording
+
+    - name: Create sessions log directory
+      file:
+        path: /var/log/sessions
+        state: directory
+        mode: "0700"
+      when: session_recording
+
+    # ===================================
+    # kubectl Installation (read-only access)
+    # ===================================
+    - name: Install kubectl
+      get_url:
+        url: "https://dl.k8s.io/release/v{{ kubectl_version }}/bin/linux/amd64/kubectl"
+        dest: /usr/local/bin/kubectl
+        mode: "0755"
+
+    - name: Install AWS IAM Authenticator
+      get_url:
+        url: "https://amazon-eks.s3.us-west-2.amazonaws.com/1.28.3/2023-11-14/bin/linux/amd64/aws-iam-authenticator"
+        dest: /usr/local/bin/aws-iam-authenticator
+        mode: "0755"
+
+    # ===================================
+    # k9s (Terminal UI for Kubernetes)
+    # ===================================
+    - name: Install k9s
+      shell: |
+        curl -sS https://webinstall.dev/k9s | bash
+      args:
+        creates: /root/.local/bin/k9s
+
+    # ===================================
+    # AWS CLI for cluster access
+    # ===================================
+    - name: Install AWS CLI v2
+      shell: |
+        curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+        unzip -o /tmp/awscliv2.zip -d /tmp
+        /tmp/aws/install --update
+
+    # ===================================
+    # Create Bastion Users
+    # ===================================
+    - name: Create bastion users
+      user:
+        name: "{{ item.username }}"
+        shell: /bin/bash
+        groups: users
+        create_home: yes
+      loop: "{{ bastion_users }}"
+      when: bastion_users | length > 0
+
+    - name: Set up SSH keys for users
+      authorized_key:
+        user: "{{ item.username }}"
+        key: "{{ item.ssh_key }}"
+        state: present
+      loop: "{{ bastion_users }}"
+      when: bastion_users | length > 0
+
+    # ===================================
+    # MOTD Banner (access warning)
+    # ===================================
+    - name: Configure access warning banner
+      copy:
+        content: |
+          ╔═══════════════════════════════════════════════════════════════════╗
+          ║                    NEOBANK BASTION HOST                           ║
+          ╠═══════════════════════════════════════════════════════════════════╣
+          ║  AUTHORIZED ACCESS ONLY                                           ║
+          ║                                                                   ║
+          ║  This is a secure jump host. All sessions are RECORDED and       ║
+          ║  AUDITED. Unauthorized access is prohibited and will be          ║
+          ║  reported to security.                                           ║
+          ║                                                                   ║
+          ║  IMPORTANT:                                                       ║
+          ║  • DO NOT run kubectl apply/delete in production                  ║
+          ║  • All deployments go through Argo CD via GitOps                  ║
+          ║  • Use kubectl get/describe/logs for debugging only               ║
+          ╚═══════════════════════════════════════════════════════════════════╝
+        dest: /etc/motd
+        mode: "0644"
+
+    # ===================================
+    # SSH Banner
+    # ===================================
+    - name: Configure SSH warning banner
+      copy:
+        content: |
+          *******************************************************************
+          *  UNAUTHORIZED ACCESS TO THIS SYSTEM IS PROHIBITED               *
+          *  All access is logged and monitored.                            *
+          *******************************************************************
+        dest: /etc/ssh/banner
+        mode: "0644"
+
+    - name: Enable SSH banner
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "^#?Banner"
+        line: "Banner /etc/ssh/banner"
+      notify: restart sshd
+
+  handlers:
+    - name: restart sshd
+      service:
+        name: sshd
+        state: restarted

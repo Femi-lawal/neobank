@@ -1,0 +1,99 @@
+# Kubecost Configuration for NeoBank FinOps
+# This provides cost visibility and optimization recommendations
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kubecost-config
+  namespace: finops
+  labels:
+    app: kubecost
+data:
+  # Cost model configuration
+  cost-model.json: |
+    {
+      "cpuCost": 0.031611,
+      "ramCost": 0.004237,
+      "storageCost": 0.00005479,
+      "gpuCost": 0.95,
+      "networkCost": 0.01,
+      "spotCPUCost": 0.006,
+      "spotRAMCost": 0.0008,
+      "zoneName": "us-east-1a",
+      "provider": "aws",
+      "discount": 0.0
+    }
+
+  # Service cost allocation mapping
+  service-labels.yaml: |
+    costCenters:
+      - name: identity-service
+        labels:
+          app: identity-service
+        department: security
+        budget: 500
+      - name: ledger-service
+        labels:
+          app: ledger-service
+        department: core-banking
+        budget: 1000
+      - name: payment-service
+        labels:
+          app: payment-service
+        department: transactions
+        budget: 800
+      - name: card-service
+        labels:
+          app: card-service
+        department: card-operations
+        budget: 600
+      - name: product-service
+        labels:
+          app: product-service
+        department: product-management
+        budget: 400
+      - name: frontend
+        labels:
+          app: frontend
+        department: customer-experience
+        budget: 300
+
+    # Monthly budget thresholds
+    budgetAlerts:
+      warning: 0.8
+      critical: 0.95
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: finops-dashboard-config
+  namespace: finops
+data:
+  grafana-datasource.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Kubecost
+        type: prometheus
+        url: http://kubecost-prometheus-server.finops.svc:9090
+        access: proxy
+        isDefault: false
+
+  cost-tracking-rules.yaml: |
+    # Prometheus recording rules for cost aggregation
+    groups:
+      - name: cost_tracking
+        interval: 1h
+        rules:
+          - record: neobank:service:hourly_cost
+            expr: |
+              sum by (service, namespace) (
+                container_cpu_usage_seconds_total * on(node) group_left()
+                node:node_cpu_cost:hourly +
+                container_memory_usage_bytes * on(node) group_left()
+                node:node_memory_cost:hourly
+              )
+          - record: neobank:namespace:daily_cost
+            expr: |
+              sum by (namespace) (
+                neobank:service:hourly_cost
+              ) * 24

@@ -1,0 +1,39 @@
+# Bootstrap App-of-Apps
+# This single application bootstraps all other Argo CD applications
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: neobank-bootstrap
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default # Use default project for bootstrap
+
+  source:
+    repoURL: git@github.com:your-org/neobank.git
+    targetRevision: main
+    path: devops/argocd/applications
+    directory:
+      recurse: false
+      include: "*.yaml"
+      exclude: "bootstrap.yaml" # Don't include self
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=false
+      - PrunePropagationPolicy=foreground
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

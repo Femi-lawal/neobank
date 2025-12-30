@@ -1,0 +1,149 @@
+# Velero Configuration for Disaster Recovery
+# Provides automated backup and restore capabilities
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: velero-config
+  namespace: velero
+  labels:
+    app: velero
+    component: configuration
+data:
+  # Velero server configuration
+  velero-config.yaml: |
+    configuration:
+      # Backup storage location (S3-compatible)
+      backupStorageLocation:
+        name: default
+        provider: aws
+        bucket: neobank-velero-backups
+        config:
+          region: us-east-1
+          s3ForcePathStyle: "true"
+          # For LocalStack testing
+          s3Url: http://localstack:4566
+      
+      # Volume snapshot location
+      volumeSnapshotLocation:
+        name: default
+        provider: aws
+        config:
+          region: us-east-1
+      
+      # Default settings
+      defaultBackupStorageLocation: default
+      defaultVolumeSnapshotLocations:
+        - aws:default
+      
+      # Backup TTL defaults
+      defaultBackupTTL: 720h  # 30 days
+      
+      # Restic configuration for PV backups
+      restic:
+        enabled: true
+        podCPULimit: "1"
+        podMemLimit: "1Gi"
+        podCPURequest: "500m"
+        podMemRequest: "256Mi"
+
+  # Recovery Point Objectives
+  rpo-config.yaml: |
+    rpoTargets:
+      # Tier 1: Critical services - 5 minute RPO
+      tier1:
+        services:
+          - identity-service
+          - ledger-service
+          - payment-service
+        backupInterval: 5m
+        retentionDays: 7
+      
+      # Tier 2: Important services - 15 minute RPO
+      tier2:
+        services:
+          - card-service
+          - product-service
+        backupInterval: 15m
+        retentionDays: 14
+      
+      # Tier 3: Supporting services - 1 hour RPO
+      tier3:
+        services:
+          - frontend
+        backupInterval: 1h
+        retentionDays: 30
+
+  # Recovery Time Objectives
+  rto-config.yaml: |
+    rtoTargets:
+      tier1:
+        target: 1h
+        maxTolerable: 4h
+        priority: 100
+      tier2:
+        target: 2h
+        maxTolerable: 8h
+        priority: 50
+      tier3:
+        target: 4h
+        maxTolerable: 24h
+        priority: 10
+---
+# Velero credentials secret template
+apiVersion: v1
+kind: Secret
+metadata:
+  name: velero-credentials
+  namespace: velero
+  labels:
+    app: velero
+type: Opaque
+stringData:
+  cloud: |
+    [default]
+    aws_access_key_id=test
+    aws_secret_access_key=test
+---
+# BackupStorageLocation CRD (for reference)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backup-storage-location
+  namespace: velero
+data:
+  bsl.yaml: |
+    apiVersion: velero.io/v1
+    kind: BackupStorageLocation
+    metadata:
+      name: default
+      namespace: velero
+    spec:
+      provider: aws
+      objectStorage:
+        bucket: neobank-velero-backups
+        prefix: backups
+      config:
+        region: us-east-1
+        s3ForcePathStyle: "true"
+        s3Url: http://localstack:4566
+      accessMode: ReadWrite
+      default: true
+---
+# VolumeSnapshotLocation CRD (for reference)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: volume-snapshot-location
+  namespace: velero
+data:
+  vsl.yaml: |
+    apiVersion: velero.io/v1
+    kind: VolumeSnapshotLocation
+    metadata:
+      name: default
+      namespace: velero
+    spec:
+      provider: aws
+      config:
+        region: us-east-1

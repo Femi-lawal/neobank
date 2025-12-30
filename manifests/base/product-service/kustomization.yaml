@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: product-service
+  annotations:
+    config.kubernetes.io/local-config: "true"
+
+resources:
+  - deployment.yaml
+  - service.yaml
+  - serviceaccount.yaml
+  - configmap.yaml
+
+commonLabels:
+  app.kubernetes.io/name: product-service
+  app.kubernetes.io/component: backend
+  app.kubernetes.io/part-of: neobank
+
+images:
+  - name: neobank/product-service
+    newName: PLACEHOLDER_REGISTRY/neobank/product-service
+    newTag: latest

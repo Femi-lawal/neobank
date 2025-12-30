@@ -1,0 +1,53 @@
+# Git Repository Secret for Argo CD
+# NOTE: In production, use External Secrets Operator or Sealed Secrets
+apiVersion: v1
+kind: Secret
+metadata:
+  name: neobank-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+type: Opaque
+stringData:
+  type: git
+  url: git@github.com:your-org/neobank-manifests.git
+  sshPrivateKey: |
+    # PLACEHOLDER - Replace with actual SSH private key
+    # In production, use External Secrets Operator to fetch from AWS Secrets Manager
+    -----BEGIN OPENSSH PRIVATE KEY-----
+    <your-ssh-private-key>
+    -----END OPENSSH PRIVATE KEY-----
+---
+# Application Repository
+apiVersion: v1
+kind: Secret
+metadata:
+  name: neobank-app-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+type: Opaque
+stringData:
+  type: git
+  url: git@github.com:your-org/neobank.git
+  sshPrivateKey: |
+    # PLACEHOLDER - Replace with actual SSH private key
+    -----BEGIN OPENSSH PRIVATE KEY-----
+    <your-ssh-private-key>
+    -----END OPENSSH PRIVATE KEY-----
+---
+# ECR Helm Repository (if using ECR for Helm charts)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ecr-helm-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+type: Opaque
+stringData:
+  type: helm
+  name: neobank-charts
+  url: oci://your-account.dkr.ecr.us-east-1.amazonaws.com
+  enableOCI: "true"
+  # AWS credentials managed via IRSA (IAM Roles for Service Accounts)

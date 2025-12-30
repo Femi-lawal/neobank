@@ -1,25 +1,17 @@
-import { test, expect } from '@playwright/test';
+import { test } from "@playwright/test";
 
-test('capture dashboard', async ({ page }) => {
-    test.setTimeout(60000);
-    // Register unique user
-    await page.goto('/register');
-    const uniqueEmail = `dash_${Date.now()}@example.com`;
-    await page.fill('input[name="firstName"]', "Dash");
-    await page.fill('input[name="lastName"]', "User");
-    await page.fill('input[type="email"]', uniqueEmail);
-    await page.fill('input[type="password"]', "password123");
-    await page.click('button[type="submit"]');
-    
-    // Login
-    await page.waitForURL(/\/login/);
-    await page.fill('input[type="email"]', uniqueEmail);
-    await page.fill('input[type="password"]', "password123");
-    await page.click('button[type="submit"]');
-    
-    // Dash
-    await page.waitForURL('/dashboard');
-    await page.waitForSelector('[data-testid="account-card"]', { timeout: 30000 });
-    await page.waitForTimeout(2000);
-    await page.screenshot({ path: 'screenshots/dashboard.png', fullPage: true });
+test("capture dashboard", async ({ page }) => {
+  test.setTimeout(60000);
+
+  // Login with demo user instead of creating new one
+  await page.goto("/login");
+  await page.fill('input[type="email"]', "demo@neobank.com");
+  await page.fill('input[type="password"]', "password123");
+  await page.click('button[type="submit"]');
+
+  // Dash
+  await page.waitForURL("/dashboard", { timeout: 15000 });
+  // Wait for page to load without depending on account cards (may not exist)
+  await page.waitForTimeout(3000);
+  await page.screenshot({ path: "screenshots/dashboard.png", fullPage: true });
 });

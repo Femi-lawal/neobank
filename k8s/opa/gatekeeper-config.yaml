@@ -1,0 +1,74 @@
+# OPA Gatekeeper Configuration
+# Configures policy enforcement behavior
+---
+apiVersion: config.gatekeeper.sh/v1alpha1
+kind: Config
+metadata:
+  name: config
+  namespace: gatekeeper-system
+spec:
+  # Sync resources for audit and policy evaluation
+  sync:
+    syncOnly:
+      - group: ""
+        version: "v1"
+        kind: "Namespace"
+      - group: ""
+        version: "v1"
+        kind: "Pod"
+      - group: ""
+        version: "v1"
+        kind: "Service"
+      - group: ""
+        version: "v1"
+        kind: "Secret"
+      - group: "apps"
+        version: "v1"
+        kind: "Deployment"
+      - group: "apps"
+        version: "v1"
+        kind: "ReplicaSet"
+      - group: "networking.k8s.io"
+        version: "v1"
+        kind: "Ingress"
+      - group: "networking.k8s.io"
+        version: "v1"
+        kind: "NetworkPolicy"
+
+  # Validation configuration
+  validation:
+    traces:
+      - user: "*"
+        kind:
+          group: ""
+          version: "v1"
+          kind: "Pod"
+
+  # Match configuration for policy scope
+  match:
+    - excludedNamespaces:
+        - kube-system
+        - kube-public
+        - kube-node-lease
+        - gatekeeper-system
+        - istio-system
+      processes:
+        - "*"
+---
+# Assign metadata for policy tracking
+apiVersion: mutations.gatekeeper.sh/v1
+kind: AssignMetadata
+metadata:
+  name: add-policy-labels
+  namespace: gatekeeper-system
+spec:
+  match:
+    scope: Namespaced
+    kinds:
+      - apiGroups: ["*"]
+        kinds: ["Pod", "Deployment", "Service"]
+    namespaces: ["neobank"]
+  location: "metadata.labels.policy-enforced"
+  parameters:
+    assign:
+      value: "true"

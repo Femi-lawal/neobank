@@ -1,0 +1,186 @@
+# DR Testing Configuration
+# Automated disaster recovery testing
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dr-testing-config
+  namespace: velero
+  labels:
+    app: velero
+    component: dr-testing
+data:
+  # DR Test CronJob definition
+  dr-test-cronjob.yaml: |
+    apiVersion: batch/v1
+    kind: CronJob
+    metadata:
+      name: dr-test-weekly
+      namespace: velero
+    spec:
+      schedule: "0 3 * * 0"  # Every Sunday at 3 AM
+      concurrencyPolicy: Forbid
+      successfulJobsHistoryLimit: 3
+      failedJobsHistoryLimit: 3
+      jobTemplate:
+        spec:
+          template:
+            spec:
+              serviceAccountName: velero
+              containers:
+                - name: dr-test
+                  image: bitnami/kubectl:latest
+                  command:
+                    - /bin/bash
+                    - /scripts/dr-test.sh
+                  volumeMounts:
+                    - name: scripts
+                      mountPath: /scripts
+                  env:
+                    - name: SLACK_WEBHOOK
+                      valueFrom:
+                        secretKeyRef:
+                          name: dr-notifications
+                          key: slack-webhook
+                          optional: true
+              volumes:
+                - name: scripts
+                  configMap:
+                    name: dr-test-scripts
+              restartPolicy: OnFailure
+
+  # DR Test Script
+  dr-test.sh: |
+    #!/bin/bash
+    set -e
+
+    TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+    TEST_NAMESPACE="dr-test-$TIMESTAMP"
+    REPORT_FILE="/tmp/dr-report-$TIMESTAMP.txt"
+
+    echo "=== NeoBank DR Test Started: $(date) ===" | tee $REPORT_FILE
+
+    # 1. Get latest backup
+    echo "Step 1: Identifying latest backup..." | tee -a $REPORT_FILE
+    LATEST_BACKUP=$(velero backup get -o json | jq -r '.items | sort_by(.metadata.creationTimestamp) | last | .metadata.name')
+    echo "Latest backup: $LATEST_BACKUP" | tee -a $REPORT_FILE
+
+    # 2. Create test namespace
+    echo "Step 2: Creating test namespace..." | tee -a $REPORT_FILE
+    kubectl create namespace $TEST_NAMESPACE || true
+
+    # 3. Restore to test namespace
+    echo "Step 3: Restoring to test namespace..." | tee -a $REPORT_FILE
+    RESTORE_NAME="dr-test-restore-$TIMESTAMP"
+
+    velero restore create $RESTORE_NAME \
+      --from-backup $LATEST_BACKUP \
+      --namespace-mappings neobank:$TEST_NAMESPACE \
+      --wait || { echo "RESTORE FAILED" | tee -a $REPORT_FILE; exit 1; }
+
+    # 4. Wait for pods to be ready
+    echo "Step 4: Waiting for pods to be ready..." | tee -a $REPORT_FILE
+    kubectl wait --for=condition=ready pod -l app -n $TEST_NAMESPACE --timeout=300s || true
+
+    # 5. Run verification tests
+    echo "Step 5: Running verification tests..." | tee -a $REPORT_FILE
+
+    TESTS_PASSED=0
+    TESTS_FAILED=0
+
+    # Test identity service
+    if kubectl exec -n $TEST_NAMESPACE deploy/identity-service -- curl -sf http://localhost:8081/health; then
+      echo "✓ Identity service health check passed" | tee -a $REPORT_FILE
+      ((TESTS_PASSED++))
+    else
+      echo "✗ Identity service health check failed" | tee -a $REPORT_FILE
+      ((TESTS_FAILED++))
+    fi
+
+    # Test ledger service
+    if kubectl exec -n $TEST_NAMESPACE deploy/ledger-service -- curl -sf http://localhost:8082/health; then
+      echo "✓ Ledger service health check passed" | tee -a $REPORT_FILE
+      ((TESTS_PASSED++))
+    else
+      echo "✗ Ledger service health check failed" | tee -a $REPORT_FILE
+      ((TESTS_FAILED++))
+    fi
+
+    # Test payment service
+    if kubectl exec -n $TEST_NAMESPACE deploy/payment-service -- curl -sf http://localhost:8083/health; then
+      echo "✓ Payment service health check passed" | tee -a $REPORT_FILE
+      ((TESTS_PASSED++))
+    else
+      echo "✗ Payment service health check failed" | tee -a $REPORT_FILE
+      ((TESTS_FAILED++))
+    fi
+
+    # Calculate RTO
+    START_TIME=$(velero restore describe $RESTORE_NAME -o json | jq -r '.status.startTimestamp')
+    END_TIME=$(velero restore describe $RESTORE_NAME -o json | jq -r '.status.completionTimestamp')
+    RTO_SECONDS=$(($(date -d "$END_TIME" +%s) - $(date -d "$START_TIME" +%s)))
+    RTO_MINUTES=$((RTO_SECONDS / 60))
+
+    echo "Recovery Time: ${RTO_MINUTES} minutes (${RTO_SECONDS} seconds)" | tee -a $REPORT_FILE
+
+    # 6. Cleanup
+    echo "Step 6: Cleaning up test namespace..." | tee -a $REPORT_FILE
+    kubectl delete namespace $TEST_NAMESPACE --wait=false
+
+    # 7. Generate report
+    echo "" | tee -a $REPORT_FILE
+    echo "=== DR Test Summary ===" | tee -a $REPORT_FILE
+    echo "Backup tested: $LATEST_BACKUP" | tee -a $REPORT_FILE
+    echo "Tests passed: $TESTS_PASSED" | tee -a $REPORT_FILE
+    echo "Tests failed: $TESTS_FAILED" | tee -a $REPORT_FILE
+    echo "Recovery Time: ${RTO_MINUTES} minutes" | tee -a $REPORT_FILE
+    echo "RTO Target: 60 minutes" | tee -a $REPORT_FILE
+
+    if [ $RTO_MINUTES -le 60 ]; then
+      echo "RTO Status: ✓ WITHIN TARGET" | tee -a $REPORT_FILE
+    else
+      echo "RTO Status: ✗ EXCEEDED TARGET" | tee -a $REPORT_FILE
+    fi
+
+    echo "=== DR Test Completed: $(date) ===" | tee -a $REPORT_FILE
+
+    # Send notification
+    if [ -n "$SLACK_WEBHOOK" ]; then
+      curl -X POST -H 'Content-type: application/json' \
+        --data "{\"text\":\"DR Test Complete\nBackup: $LATEST_BACKUP\nTests: $TESTS_PASSED passed, $TESTS_FAILED failed\nRTO: ${RTO_MINUTES}min\"}" \
+        $SLACK_WEBHOOK
+    fi
+
+    exit $TESTS_FAILED
+---
+# DR Test Scripts ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dr-test-scripts
+  namespace: velero
+data:
+  dr-test.sh: |
+    #!/bin/bash
+    # Content loaded from dr-testing-config
+    source /scripts/dr-test-main.sh
+---
+# DR Test ServiceAccount
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dr-test-sa
+  namespace: velero
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dr-test-admin
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - kind: ServiceAccount
+    name: dr-test-sa
+    namespace: velero

@@ -8,15 +8,9 @@ import { useTheme } from './context/ThemeContext';
 export default function LayoutWrapper({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
     const isAuthPage = pathname === '/login' || pathname === '/register' || pathname === '/';
-
-    // Get theme, but handle case where provider isn't ready yet
-    let isDark = true;
-    try {
-        const { theme } = useTheme();
-        isDark = theme === 'dark';
-    } catch {
-        // ThemeProvider not ready yet, use dark as default
-    }
+    
+    const { theme } = useTheme();
+    const isDark = theme === 'dark';
 
     if (isAuthPage) {
         return <main className="min-h-screen">{children}</main>;

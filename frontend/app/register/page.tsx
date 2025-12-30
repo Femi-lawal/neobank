@@ -3,10 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
-import { Mail, Lock, User } from "lucide-react";
 import Link from 'next/link';
-import { Button } from "../components/ui/Button";
-import { Input } from "../components/ui/Input";
 import { motion } from "framer-motion";
 
 export default function RegisterPage() {
@@ -30,8 +27,12 @@ export default function RegisterPage() {
                 last_name: formData.lastName,
             });
             router.push("/login?registered=true");
-        } catch (err: any) {
-            setError(err.response?.data?.error || "Registration failed");
+        } catch (err: unknown) {
+            const errorMessage = err instanceof Error ? err.message :
+                (typeof err === 'object' && err !== null && 'response' in err)
+                    ? (err as { response?: { data?: { error?: string } } }).response?.data?.error || "Registration failed"
+                    : "Registration failed";
+            setError(errorMessage);
         } finally {
             setLoading(false);
         }

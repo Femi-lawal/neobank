@@ -14,11 +14,26 @@ spec:
       labels:
         app: postgres
     spec:
+      # Pod-level security context
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999 # postgres user
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: postgres
           image: postgres:16-alpine
           ports:
             - containerPort: 5432
+          # Container-level security context
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false # Postgres needs write access
+            capabilities:
+              drop:
+                - ALL
           env:
             - name: POSTGRES_USER
               valueFrom:
@@ -38,12 +53,21 @@ spec:
           volumeMounts:
             - name: postgres-data
               mountPath: /var/lib/postgresql/data
+          startupProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - $(POSTGRES_USER)
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 30
           readinessProbe:
             exec:
               command:
                 - pg_isready
                 - -U
-                - user
+                - $(POSTGRES_USER)
             initialDelaySeconds: 5
             periodSeconds: 5
           livenessProbe:
@@ -51,7 +75,7 @@ spec:
               command:
                 - pg_isready
                 - -U
-                - user
+                - $(POSTGRES_USER)
             initialDelaySeconds: 30
             periodSeconds: 10
           resources:

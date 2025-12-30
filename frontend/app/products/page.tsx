@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import { BadgePercent, ChevronRight, PiggyBank, Banknote, TrendingUp, CreditCard, Check, Sparkles } from 'lucide-react';
+import { ChevronRight, PiggyBank, Banknote, TrendingUp, CreditCard, Check, Sparkles, LucideIcon } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { motion } from 'framer-motion';
 
@@ -22,7 +22,7 @@ const productCategories = [
     { id: 'credit', label: 'Credit', icon: CreditCard },
 ];
 
-const productTypeIcons: Record<string, any> = {
+const productTypeIcons: Record<string, LucideIcon> = {
     'SAVINGS': PiggyBank,
     'CHECKING': Banknote,
     'INVESTMENT': TrendingUp,
@@ -44,7 +44,12 @@ export default function ProductsPage() {
     const isDark = theme === 'dark';
 
     useEffect(() => {
-        fetch('/api/product/products')
+        const token = localStorage.getItem('token');
+        fetch('/api/product/products', {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        })
             .then(res => res.json())
             .then(data => setProducts(data || []))
             .catch((err) => console.error(err));
@@ -94,10 +99,10 @@ export default function ProductsPage() {
                             key={cat.id}
                             onClick={() => setActiveCategory(cat.id)}
                             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${isActive
-                                    ? 'bg-brand-500 text-white shadow-lg shadow-brand-500/25'
-                                    : isDark
-                                        ? 'bg-surface-800 text-surface-300 hover:bg-surface-700'
-                                        : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                                ? 'bg-brand-500 text-white shadow-lg shadow-brand-500/25'
+                                : isDark
+                                    ? 'bg-surface-800 text-surface-300 hover:bg-surface-700'
+                                    : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
                                 }`}
                         >
                             <Icon size={16} />
@@ -125,8 +130,8 @@ export default function ProductsPage() {
                             <Card
                                 delay={i * 0.1}
                                 className={`relative group overflow-hidden transition-all ${isComparing
-                                        ? 'ring-2 ring-brand-500 ring-offset-2 ring-offset-surface-950'
-                                        : 'border-brand-500/20 hover:border-brand-500/40'
+                                    ? 'ring-2 ring-brand-500 ring-offset-2 ring-offset-surface-950'
+                                    : 'border-brand-500/20 hover:border-brand-500/40'
                                     }`}
                             >
                                 {/* Background Glow */}

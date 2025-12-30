@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/femi-lawal/new_bank/backend/ledger-service/internal/model"
+	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -28,6 +29,19 @@ func (m *MockLedgerRepo) PostTransaction(entry *model.JournalEntry) error {
 	return args.Error(0)
 }
 
+func (m *MockLedgerRepo) GetAccount(id string) (*model.Account, error) {
+	args := m.Called(id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.Account), args.Error(1)
+}
+
+func (m *MockLedgerRepo) ListAccountsByUser(userID string) ([]model.Account, error) {
+	args := m.Called(userID)
+	return args.Get(0).([]model.Account), args.Error(1)
+}
+
 func TestCreateAccount(t *testing.T) {
 	mockRepo := new(MockLedgerRepo)
 	service := NewLedgerService(mockRepo)
@@ -36,7 +50,7 @@ func TestCreateAccount(t *testing.T) {
 	mockRepo.On("CreateAccount", mock.AnythingOfType("*model.Account")).Return(nil)
 
 	// Execute
-	acc, err := service.CreateAccount("123", "Checking", "USD", model.Asset)
+	acc, err := service.CreateAccount(uuid.New().String(), "123", "Checking", "USD", model.Asset)
 
 	// Assert
 	assert.NoError(t, err)

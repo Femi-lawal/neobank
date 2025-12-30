@@ -1,0 +1,83 @@
+# LimitRange configurations for cost optimization
+# Sets default resource requests/limits for containers
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: neobank-limit-range
+  namespace: neobank
+  labels:
+    finops.neobank.io/policy: default-limits
+spec:
+  limits:
+    # Container limits
+    - type: Container
+      default:
+        cpu: "500m"
+        memory: "512Mi"
+      defaultRequest:
+        cpu: "100m"
+        memory: "128Mi"
+      max:
+        cpu: "2"
+        memory: "4Gi"
+      min:
+        cpu: "50m"
+        memory: "64Mi"
+      maxLimitRequestRatio:
+        cpu: "10"
+        memory: "4"
+
+    # Pod limits
+    - type: Pod
+      max:
+        cpu: "4"
+        memory: "8Gi"
+
+    # PVC limits
+    - type: PersistentVolumeClaim
+      max:
+        storage: "20Gi"
+      min:
+        storage: "1Gi"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: finops-limit-range
+  namespace: finops
+  labels:
+    finops.neobank.io/policy: platform-limits
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: "200m"
+        memory: "256Mi"
+      defaultRequest:
+        cpu: "50m"
+        memory: "64Mi"
+      max:
+        cpu: "1"
+        memory: "2Gi"
+---
+# High-performance services limit range
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: neobank-high-perf-limit-range
+  namespace: neobank
+  annotations:
+    description: "For services requiring higher resources (ledger, payment)"
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: "1"
+        memory: "1Gi"
+      defaultRequest:
+        cpu: "250m"
+        memory: "256Mi"
+      max:
+        cpu: "4"
+        memory: "8Gi"

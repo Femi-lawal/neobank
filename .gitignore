@@ -57,3 +57,39 @@ Stripe*
 
 # Compiled binaries
 bin/
+
+# Terraform state (contains sensitive data)
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Terraform variables (may contain sensitive data)
+terraform.tfvars
+*.tfvars.local
+*.auto.tfvars
+
+# Secrets and credentials (NEVER commit these)
+**/secrets.json
+**/secrets.yaml
+**/credentials.json
+**/credentials.yaml
+**/*.pem
+**/*.key
+**/kubeconfig
+**/kube.config
+**/.env
+**/.env.*
+!**/.env.example
+
+# Output and log files (may contain sensitive info)
+**/terraform_output.log
+**/test_output.txt
+**/*.log
+!.gitkeep

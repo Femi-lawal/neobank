@@ -1,14 +1,18 @@
 package service
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
+	"os"
 	"time"
 
 	"github.com/femi-lawal/new_bank/backend/card-service/internal/model"
-	"github.com/femi-lawal/new_bank/backend/card-service/internal/repository"
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 )
@@ -17,13 +21,41 @@ var (
 	ErrUnauthorized     = errors.New("unauthorized: you do not own this account")
 	ErrInvalidUserID    = errors.New("invalid user id")
 	ErrInvalidAccountID = errors.New("invalid account id")
+	ErrEncryption       = errors.New("encryption failed")
 )
 
-type CardService struct {
-	Repo *repository.CardRepository
+// encryptionKey is loaded from environment variable
+// In production, this should come from AWS KMS or similar
+var encryptionKey []byte
+
+func init() {
+	keyStr := os.Getenv("CARD_ENCRYPTION_KEY")
+	if keyStr == "" {
+		// For development/testing only - production MUST set this
+		keyStr = "devonly32byteencryptionkey!!!!!!" // exactly 32 bytes
+	}
+	encryptionKey = []byte(keyStr)
+	if len(encryptionKey) != 32 {
+		panic("CARD_ENCRYPTION_KEY must be exactly 32 bytes for AES-256")
+	}
 }
 
-func NewCardService(repo *repository.CardRepository) *CardService {
+// Repository defines the interface for card data access
+// This allows for mocking in unit tests
+type Repository interface {
+	CreateCard(card *model.Card) error
+	GetCardByID(id uuid.UUID) (*model.Card, error)
+	GetCardByNumber(pan string) (*model.Card, error)
+	ListCardsByAccount(accountID string) ([]model.Card, error)
+	ListCardsByUser(userID string) ([]model.Card, error)
+	VerifyAccountOwnership(userID, accountID uuid.UUID) (bool, error)
+}
+
+type CardService struct {
+	Repo Repository
+}
+
+func NewCardService(repo Repository) *CardService {
 	return &CardService{Repo: repo}
 }
 
@@ -59,8 +91,11 @@ func (s *CardService) IssueCard(userID, accountID string) (*model.Card, error) {
 	// Expiry +3 years
 	expiry := time.Now().AddDate(3, 0, 0).Format("01/06")
 
-	// SEC-003: Encrypt card number for storage
-	encryptedPAN := encryptCardNumber(pan)
+	// SEC-003: Encrypt card number for storage using AES-256-GCM
+	encryptedPAN, err := encryptCardNumber(pan)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encrypt card number: %w", err)
+	}
 	maskedPAN := maskCardNumber(pan)
 
 	card := &model.Card{
@@ -139,10 +174,56 @@ func maskCardNumber(pan string) string {
 	return fmt.Sprintf("**** **** **** %s", pan[len(pan)-4:])
 }
 
-// encryptCardNumber encrypts the card number for storage
-// SEC-003: In production, use AES-256-GCM with KMS-managed keys
-func encryptCardNumber(pan string) string {
-	// DEMO: Base64 placeholder - in production use real encryption
-	// Example: return aes256gcm.Encrypt(pan, kmsKey)
-	return fmt.Sprintf("ENC[%s]", pan) // Placeholder for demo
+// encryptCardNumber encrypts the card number using AES-256-GCM
+// SEC-003: Real encryption for PCI-DSS compliance
+func encryptCardNumber(pan string) (string, error) {
+	block, err := aes.NewCipher(encryptionKey)
+	if err != nil {
+		return "", fmt.Errorf("failed to create cipher: %w", err)
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", fmt.Errorf("failed to create GCM: %w", err)
+	}
+
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", fmt.Errorf("failed to generate nonce: %w", err)
+	}
+
+	ciphertext := gcm.Seal(nonce, nonce, []byte(pan), nil)
+	return base64.StdEncoding.EncodeToString(ciphertext), nil
+}
+
+// decryptCardNumber decrypts the card number using AES-256-GCM
+// SEC-003: For internal use only - never expose decrypted PAN to clients
+func decryptCardNumber(encrypted string) (string, error) {
+	ciphertext, err := base64.StdEncoding.DecodeString(encrypted)
+	if err != nil {
+		return "", fmt.Errorf("failed to decode: %w", err)
+	}
+
+	block, err := aes.NewCipher(encryptionKey)
+	if err != nil {
+		return "", fmt.Errorf("failed to create cipher: %w", err)
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", fmt.Errorf("failed to create GCM: %w", err)
+	}
+
+	nonceSize := gcm.NonceSize()
+	if len(ciphertext) < nonceSize {
+		return "", errors.New("ciphertext too short")
+	}
+
+	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to decrypt: %w", err)
+	}
+
+	return string(plaintext), nil
 }

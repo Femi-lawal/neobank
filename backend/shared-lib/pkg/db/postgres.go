@@ -3,6 +3,7 @@ package db
 import (
 	"fmt"
 	"log/slog"
+	"net/url"
 	"time"
 
 	"gorm.io/driver/postgres"
@@ -19,8 +20,18 @@ type Config struct {
 }
 
 func Connect(cfg Config) (*gorm.DB, error) {
-	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s",
-		cfg.Host, cfg.User, cfg.Password, cfg.DBName, cfg.Port, cfg.SSLMode)
+	// Build DSN using URL for better escaping of special characters
+	u := url.URL{
+		Scheme: "postgres",
+		User:   url.UserPassword(cfg.User, cfg.Password),
+		Host:   fmt.Sprintf("%s:%s", cfg.Host, cfg.Port),
+		Path:   cfg.DBName,
+	}
+	q := u.Query()
+	q.Set("sslmode", cfg.SSLMode)
+	u.RawQuery = q.Encode()
+
+	dsn := u.String()
 
 	// Retry logic
 	var db *gorm.DB

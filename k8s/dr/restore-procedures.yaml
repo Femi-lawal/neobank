@@ -1,0 +1,227 @@
+# Restore Procedures for Disaster Recovery
+# Defines automated and manual restore processes
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: restore-procedures
+  namespace: velero
+  labels:
+    app: velero
+    component: restore
+data:
+  # Automated restore template
+  restore-template.yaml: |
+    apiVersion: velero.io/v1
+    kind: Restore
+    metadata:
+      name: neobank-restore-TIMESTAMP
+      namespace: velero
+    spec:
+      backupName: neobank-full-backup-TIMESTAMP
+      includedNamespaces:
+        - neobank
+      includedResources:
+        - "*"
+      excludedResources:
+        - nodes
+        - events
+        - events.events.k8s.io
+      restorePVs: true
+      preserveNodePorts: true
+      hooks:
+        resources:
+          - name: postgres-restore-hook
+            includedNamespaces:
+              - neobank
+            labelSelector:
+              matchLabels:
+                app: postgres
+            post:
+              - exec:
+                  container: postgres
+                  command:
+                    - /bin/bash
+                    - -c
+                    - |
+                      # Wait for postgres to be ready
+                      until pg_isready -U neobank; do sleep 2; done
+                      # Run any post-restore migrations
+                      echo "Restore complete"
+                  onError: Continue
+                  timeout: 10m
+
+  # Point-in-time restore
+  pitr-restore.yaml: |
+    apiVersion: velero.io/v1
+    kind: Restore
+    metadata:
+      name: neobank-pitr-restore-TIMESTAMP
+      namespace: velero
+    spec:
+      backupName: AUTO_SELECT_NEAREST
+      includedNamespaces:
+        - neobank
+      restorePVs: true
+      # Restore to specific timestamp
+      # Uses latest backup before specified time
+
+  # Selective service restore
+  service-restore-template.yaml: |
+    apiVersion: velero.io/v1
+    kind: Restore
+    metadata:
+      name: neobank-service-restore-TIMESTAMP
+      namespace: velero
+    spec:
+      backupName: BACKUP_NAME
+      includedNamespaces:
+        - neobank
+      labelSelector:
+        matchLabels:
+          app: SERVICE_NAME
+      restorePVs: true
+---
+# Restore scripts ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: restore-scripts
+  namespace: velero
+data:
+  # Full cluster restore script
+  full-restore.sh: |
+    #!/bin/bash
+    set -e
+
+    BACKUP_NAME=${1:-$(velero backup get -o json | jq -r '.items | sort_by(.metadata.creationTimestamp) | last | .metadata.name')}
+    RESTORE_NAME="neobank-restore-$(date +%Y%m%d-%H%M%S)"
+
+    echo "Starting full restore from backup: $BACKUP_NAME"
+    echo "Restore name: $RESTORE_NAME"
+
+    # Create restore
+    velero restore create $RESTORE_NAME \
+      --from-backup $BACKUP_NAME \
+      --include-namespaces neobank \
+      --restore-volumes=true \
+      --wait
+
+    # Check restore status
+    velero restore describe $RESTORE_NAME
+
+    # Verify services
+    echo "Verifying restored services..."
+    kubectl get pods -n neobank
+    kubectl get svc -n neobank
+
+    echo "Restore completed successfully"
+
+  # Single service restore script
+  service-restore.sh: |
+    #!/bin/bash
+    set -e
+
+    SERVICE_NAME=$1
+    BACKUP_NAME=${2:-$(velero backup get -o json | jq -r '.items | sort_by(.metadata.creationTimestamp) | last | .metadata.name')}
+    RESTORE_NAME="neobank-$SERVICE_NAME-restore-$(date +%Y%m%d-%H%M%S)"
+
+    if [ -z "$SERVICE_NAME" ]; then
+      echo "Usage: service-restore.sh <service-name> [backup-name]"
+      exit 1
+    fi
+
+    echo "Restoring service: $SERVICE_NAME from backup: $BACKUP_NAME"
+
+    # Scale down existing deployment
+    kubectl scale deployment/$SERVICE_NAME -n neobank --replicas=0 || true
+
+    # Create selective restore
+    velero restore create $RESTORE_NAME \
+      --from-backup $BACKUP_NAME \
+      --include-namespaces neobank \
+      --selector app=$SERVICE_NAME \
+      --restore-volumes=true \
+      --wait
+
+    # Scale back up
+    kubectl scale deployment/$SERVICE_NAME -n neobank --replicas=2
+
+    # Wait for rollout
+    kubectl rollout status deployment/$SERVICE_NAME -n neobank
+
+    echo "Service $SERVICE_NAME restored successfully"
+
+  # Database restore script
+  database-restore.sh: |
+    #!/bin/bash
+    set -e
+
+    BACKUP_NAME=${1:-latest}
+    TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+
+    echo "Starting database restore from backup: $BACKUP_NAME"
+
+    # Find postgres pod
+    PG_POD=$(kubectl get pods -n neobank -l app=postgres -o jsonpath='{.items[0].metadata.name}')
+
+    # Restore database
+    if [ "$BACKUP_NAME" == "latest" ]; then
+      # Get latest backup from S3
+      kubectl exec -n neobank $PG_POD -- /bin/bash -c "
+        aws s3 cp s3://neobank-backups/database/latest.sql /tmp/restore.sql
+        psql -U neobank -d neobank -f /tmp/restore.sql
+        rm /tmp/restore.sql
+      "
+    else
+      kubectl exec -n neobank $PG_POD -- /bin/bash -c "
+        aws s3 cp s3://neobank-backups/database/$BACKUP_NAME /tmp/restore.sql
+        psql -U neobank -d neobank -f /tmp/restore.sql
+        rm /tmp/restore.sql
+      "
+    fi
+
+    echo "Database restore completed"
+
+  # Verify restore script
+  verify-restore.sh: |
+    #!/bin/bash
+    set -e
+
+    echo "=== Verifying NeoBank Restore ==="
+
+    # Check all pods are running
+    echo "Checking pod status..."
+    NOT_RUNNING=$(kubectl get pods -n neobank --field-selector=status.phase!=Running -o name | wc -l)
+    if [ "$NOT_RUNNING" -gt 0 ]; then
+      echo "WARNING: $NOT_RUNNING pods are not running"
+      kubectl get pods -n neobank --field-selector=status.phase!=Running
+    else
+      echo "All pods are running"
+    fi
+
+    # Check services
+    echo "Checking services..."
+    kubectl get svc -n neobank
+
+    # Health checks
+    echo "Running health checks..."
+    SERVICES=("identity-service:8081" "ledger-service:8082" "payment-service:8083" "product-service:8084" "card-service:8085")
+
+    for service in "${SERVICES[@]}"; do
+      name=$(echo $service | cut -d: -f1)
+      port=$(echo $service | cut -d: -f2)
+      
+      HEALTH=$(kubectl exec -n neobank deploy/$name -- curl -s http://localhost:$port/health || echo "FAILED")
+      if [ "$HEALTH" == "FAILED" ]; then
+        echo "FAIL: $name health check failed"
+      else
+        echo "OK: $name is healthy"
+      fi
+    done
+
+    # Database connectivity
+    echo "Checking database connectivity..."
+    kubectl exec -n neobank deploy/identity-service -- /bin/sh -c "nc -zv postgres 5432" || echo "Database connectivity check failed"
+
+    echo "=== Restore verification complete ==="

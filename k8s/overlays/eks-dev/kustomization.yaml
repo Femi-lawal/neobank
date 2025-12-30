@@ -1,0 +1,58 @@
+# Kustomization for EKS dev environment
+# =============================================================================
+# NOTE: This file uses placeholder variables that must be substituted before
+# applying. Use envsubst or kustomize edit set image in CI/CD pipeline.
+#
+# Required environment variables:
+#   - AWS_ACCOUNT_ID: Your AWS account ID
+#   - AWS_REGION: AWS region (default: us-east-1)
+#   - IMAGE_TAG: Container image tag (default: latest)
+# =============================================================================
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: neobank
+
+resources:
+  - ../../base
+
+commonLabels:
+  environment: dev-eks
+  cluster: neobank-dev-eks
+
+# ECR images - Use kustomize edit set image in CI/CD to update these
+# Example: kustomize edit set image neobank/identity-service=$ECR_REGISTRY/neobank/identity-service:$IMAGE_TAG
+images:
+  - name: neobank/identity-service
+    newName: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/neobank/identity-service
+    newTag: ${IMAGE_TAG}
+  - name: neobank/ledger-service
+    newName: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/neobank/ledger-service
+    newTag: ${IMAGE_TAG}
+  - name: neobank/payment-service
+    newName: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/neobank/payment-service
+    newTag: ${IMAGE_TAG}
+  - name: neobank/card-service
+    newName: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/neobank/card-service
+    newTag: ${IMAGE_TAG}
+  - name: neobank/product-service
+    newName: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/neobank/product-service
+    newTag: ${IMAGE_TAG}
+  - name: neobank/frontend
+    newName: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/neobank/frontend
+    newTag: ${IMAGE_TAG}
+
+# Environment-specific patches
+patches:
+  # Update replicas for dev
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 2
+    target:
+      kind: Deployment
+
+patchesStrategicMerge:
+  - ingress-patch.yaml
+  - service-account-patches.yaml
+  - configmap-patches.yaml

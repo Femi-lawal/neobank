@@ -52,7 +52,6 @@ func TestInitiateTransfer_InvalidAmount(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockRepo := new(MockPaymentRepository)
 			svc := &PaymentService{Repo: nil, useKafka: false}
 
 			fromAcc := uuid.New().String()

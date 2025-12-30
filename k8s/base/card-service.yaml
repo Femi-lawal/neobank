@@ -5,6 +5,13 @@ metadata:
   namespace: neobank
   labels:
     app: card-service
+    app.kubernetes.io/name: card-service
+    app.kubernetes.io/part-of: neobank
+    app.kubernetes.io/component: backend
+  annotations:
+    description: "Card management service"
+    owner: "platform-team"
+    cost-center: "engineering"
 spec:
   replicas: 2
   selector:
@@ -15,10 +22,26 @@ spec:
       labels:
         app: card-service
     spec:
+      serviceAccountName: card-service-sa
+      # Pod security context
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: card-service
           image: neobank/card-service:latest
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
+          # Container security context
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
           ports:
             - containerPort: 8085
           env:
@@ -37,23 +60,41 @@ spec:
             - name: DB_USER
               valueFrom:
                 secretKeyRef:
-                  name: neobank-secrets
-                  key: db-user
+                  name: neobank-db-credentials
+                  key: username
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: neobank-secrets
-                  key: db-password
+                  name: neobank-db-credentials
+                  key: password
             - name: DB_NAME
               valueFrom:
-                secretKeyRef:
-                  name: neobank-secrets
-                  key: db-name
+                configMapKeyRef:
+                  name: neobank-config
+                  key: DB_NAME
+            - name: DB_SSLMODE
+              valueFrom:
+                configMapKeyRef:
+                  name: neobank-config
+                  key: DB_SSLMODE
+            - name: IDENTITY_SERVICE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: neobank-config
+                  key: IDENTITY_SERVICE_URL
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: neobank-secrets
-                  key: jwt-secret
+                  name: neobank-jwt
+                  key: secret
+          # Startup probe for slow-starting containers
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8085
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 30
           readinessProbe:
             httpGet:
               path: /health
@@ -73,6 +114,13 @@ spec:
             limits:
               memory: "256Mi"
               cpu: "200m"
+          # Volume mount for tmp if needed
+          volumeMounts:
+            - name: tmp-volume
+              mountPath: /tmp
+      volumes:
+        - name: tmp-volume
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

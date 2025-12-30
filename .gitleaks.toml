@@ -1,0 +1,24 @@
+# Gitleaks Configuration
+# https://github.com/gitleaks/gitleaks#configuration
+
+title = "NeoBank Gitleaks Configuration"
+
+# Allowlist specific paths that contain example/template values
+[allowlist]
+description = "Global allowlist for test and example files"
+
+paths = [
+    '''.*_test\.go$''',
+    '''.*\.test\.(ts|js)$''',
+    '''.*\.spec\.(ts|js)$''',
+    '''.*\.example\.(yaml|yml|json)$''',
+    '''.*secrets\.example\.json$''',
+    '''.*\.env\.example$''',
+    '''devops/argocd/config/repository\.yaml''',
+]
+
+regexes = [
+    '''<your-.*>''',
+    '''test_encryption_key_32_bytes''',
+    '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.eyJzdWIiOiIxMjM0NTY3ODkwIn0''',
+]

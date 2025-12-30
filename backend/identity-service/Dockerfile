@@ -1,17 +1,19 @@
 # Build stage
-FROM golang:alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
 # Install dependencies
 RUN apk add --no-cache git
 
-# Copy go workspace files
-COPY go.work go.work.sum ./
+# Disable Go workspace for isolated service build
+ENV GOWORK=off
+
+# Copy go.mod and go.sum for dependency caching
 COPY shared-lib/go.mod shared-lib/go.sum ./shared-lib/
 COPY identity-service/go.mod identity-service/go.sum ./identity-service/
 
-# Download dependencies
+# Download dependencies without workspace (faster build)
 RUN cd shared-lib && go mod download
 RUN cd identity-service && go mod download
 

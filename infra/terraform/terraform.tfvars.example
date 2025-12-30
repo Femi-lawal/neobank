@@ -1,0 +1,22 @@
+# Terraform Variables Template
+# =============================================================================
+# Copy this file to terraform.tfvars and fill in your values.
+# terraform.tfvars is gitignored and should NEVER be committed.
+# =============================================================================
+
+# AWS Account Configuration
+# aws_account_id = "YOUR_AWS_ACCOUNT_ID"  # e.g., 123456789012
+
+# Account Email Configuration
+# Used for creating AWS accounts with Gmail + aliases
+account_email_prefix = "your-email-prefix"  # e.g., femilawal76
+account_email_domain = "gmail.com"
+
+# Environment Configuration
+environment  = "dev"
+project_name = "neobank"
+aws_region   = "us-east-1"
+
+# Optional: Control Tower Configuration
+# log_archive_account_id = ""
+# audit_account_id       = ""

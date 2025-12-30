@@ -12,12 +12,12 @@ DELETE FROM products;
 DELETE FROM users WHERE email IN ('demo@neobank.com', 'user@example.com', 'jane@neobank.com');
 
 -- ============================================================================
--- USERS (password: "password" for all)
+-- USERS (password: "password123" for all - bcrypt hash below)
 -- ============================================================================
 INSERT INTO users (id, email, password_hash, first_name, last_name, role, kyc_status, created_at, updated_at) VALUES 
-('11111111-1111-1111-1111-111111111111', 'demo@neobank.com', '$2a$10$Oj28BxUVAVcUEvcJj.t2pOA5qjs.TnhnMkLbqozkX7lWOGcqyXXEq', 'Alex', 'Johnson', 'customer', 'VERIFIED', NOW() - INTERVAL '1 year', NOW()),
-('22222222-2222-2222-2222-222222222222', 'user@example.com', '$2a$10$Oj28BxUVAVcUEvcJj.t2pOA5qjs.TnhnMkLbqozkX7lWOGcqyXXEq', 'John', 'Doe', 'customer', 'VERIFIED', NOW() - INTERVAL '6 months', NOW()),
-('33333333-3333-3333-3333-333333333333', 'jane@neobank.com', '$2a$10$Oj28BxUVAVcUEvcJj.t2pOA5qjs.TnhnMkLbqozkX7lWOGcqyXXEq', 'Jane', 'Smith', 'admin', 'VERIFIED', NOW() - INTERVAL '2 years', NOW());
+('11111111-1111-1111-1111-111111111111', 'demo@neobank.com', '$2a$12$KqTOwPMvEUhkF0wkYXKtzO3EM3IUtv8EWtpkWrIzNDkI1hGxs.CCm', 'Alex', 'Johnson', 'customer', 'VERIFIED', NOW() - INTERVAL '1 year', NOW()),
+('22222222-2222-2222-2222-222222222222', 'user@example.com', '$2a$12$KqTOwPMvEUhkF0wkYXKtzO3EM3IUtv8EWtpkWrIzNDkI1hGxs.CCm', 'John', 'Doe', 'customer', 'VERIFIED', NOW() - INTERVAL '6 months', NOW()),
+('33333333-3333-3333-3333-333333333333', 'jane@neobank.com', '$2a$12$KqTOwPMvEUhkF0wkYXKtzO3EM3IUtv8EWtpkWrIzNDkI1hGxs.CCm', 'Jane', 'Smith', 'admin', 'VERIFIED', NOW() - INTERVAL '2 years', NOW());
 
 -- ============================================================================
 -- PRODUCTS (15 Banking Products)
@@ -42,32 +42,32 @@ INSERT INTO products (id, code, name, type, interest_rate, currency_code, metada
 -- ============================================================================
 -- ACCOUNTS (12 Demo User Accounts)
 -- ============================================================================
-INSERT INTO accounts (id, account_number, name, type, currency_code, status, balance_version, cached_balance, metadata, created_at, updated_at) VALUES
-('b0000001-0001-0001-0001-000000000001', 'ACC-1001', 'Primary Checking', 'ASSET', 'USD', 'ACTIVE', 150, 18458.75, '{"owner_id": "11111111-1111-1111-1111-111111111111"}', NOW() - INTERVAL '11 months', NOW()),
-('b0000001-0001-0001-0001-000000000002', 'ACC-1002', 'High-Yield Savings', 'ASSET', 'USD', 'ACTIVE', 80, 52230.00, '{"owner_id": "11111111-1111-1111-1111-111111111111"}', NOW() - INTERVAL '10 months', NOW()),
-('b0000001-0001-0001-0001-000000000003', 'ACC-1003', 'Emergency Fund', 'ASSET', 'USD', 'ACTIVE', 40, 25000.00, '{"owner_id": "11111111-1111-1111-1111-111111111111"}', NOW() - INTERVAL '9 months', NOW()),
-('b0000001-0001-0001-0001-000000000004', 'ACC-1004', 'Vacation Fund', 'ASSET', 'USD', 'ACTIVE', 25, 4850.50, '{"owner_id": "11111111-1111-1111-1111-111111111111"}', NOW() - INTERVAL '6 months', NOW()),
-('b0000001-0001-0001-0001-000000000005', 'ACC-1005', 'Euro Account', 'ASSET', 'EUR', 'ACTIVE', 15, 12500.00, '{"owner_id": "11111111-1111-1111-1111-111111111111"}', NOW() - INTERVAL '5 months', NOW()),
-('b0000001-0001-0001-0001-000000000006', 'ACC-1006', 'British Pounds', 'ASSET', 'GBP', 'ACTIVE', 12, 6200.00, '{"owner_id": "11111111-1111-1111-1111-111111111111"}', NOW() - INTERVAL '4 months', NOW()),
-('b0000001-0001-0001-0001-000000000007', 'ACC-1007', 'Investment Reserve', 'ASSET', 'USD', 'ACTIVE', 30, 35000.00, '{"owner_id": "11111111-1111-1111-1111-111111111111"}', NOW() - INTERVAL '8 months', NOW()),
-('b0000001-0001-0001-0001-000000000008', 'ACC-1008', 'Business Account', 'ASSET', 'USD', 'ACTIVE', 60, 98450.25, '{"owner_id": "11111111-1111-1111-1111-111111111111"}', NOW() - INTERVAL '7 months', NOW()),
-('b0000001-0001-0001-0001-000000000009', 'ACC-1009', 'Retirement Fund', 'ASSET', 'USD', 'ACTIVE', 20, 125000.00, '{"owner_id": "11111111-1111-1111-1111-111111111111"}', NOW() - INTERVAL '1 year', NOW()),
-('b0000001-0001-0001-0001-000000000010', 'ACC-1010', 'Kids College Fund', 'ASSET', 'USD', 'ACTIVE', 15, 45000.00, '{"owner_id": "11111111-1111-1111-1111-111111111111"}', NOW() - INTERVAL '2 years', NOW()),
-('b0000002-0002-0002-0002-000000000001', 'ACC-2001', 'Main Checking', 'ASSET', 'USD', 'ACTIVE', 50, 8680.30, '{"owner_id": "22222222-2222-2222-2222-222222222222"}', NOW() - INTERVAL '5 months', NOW()),
-('b0000002-0002-0002-0002-000000000002', 'ACC-2002', 'Savings', 'ASSET', 'USD', 'ACTIVE', 25, 18500.00, '{"owner_id": "22222222-2222-2222-2222-222222222222"}', NOW() - INTERVAL '5 months', NOW());
+INSERT INTO accounts (id, user_id, account_number, name, type, currency_code, status, balance_version, cached_balance, metadata, created_at, updated_at) VALUES
+('b0000001-0001-0001-0001-000000000001', '11111111-1111-1111-1111-111111111111', 'ACC-1001', 'Primary Checking', 'ASSET', 'USD', 'ACTIVE', 150, 18458.75, '{"owner_id": "11111111-1111-1111-1111-111111111111"}', NOW() - INTERVAL '11 months', NOW()),
+('b0000001-0001-0001-0001-000000000002', '11111111-1111-1111-1111-111111111111', 'ACC-1002', 'High-Yield Savings', 'ASSET', 'USD', 'ACTIVE', 80, 52230.00, '{"owner_id": "11111111-1111-1111-1111-111111111111"}', NOW() - INTERVAL '10 months', NOW()),
+('b0000001-0001-0001-0001-000000000003', '11111111-1111-1111-1111-111111111111', 'ACC-1003', 'Emergency Fund', 'ASSET', 'USD', 'ACTIVE', 40, 25000.00, '{"owner_id": "11111111-1111-1111-1111-111111111111"}', NOW() - INTERVAL '9 months', NOW()),
+('b0000001-0001-0001-0001-000000000004', '11111111-1111-1111-1111-111111111111', 'ACC-1004', 'Vacation Fund', 'ASSET', 'USD', 'ACTIVE', 25, 4850.50, '{"owner_id": "11111111-1111-1111-1111-111111111111"}', NOW() - INTERVAL '6 months', NOW()),
+('b0000001-0001-0001-0001-000000000005', '11111111-1111-1111-1111-111111111111', 'ACC-1005', 'Euro Account', 'ASSET', 'EUR', 'ACTIVE', 15, 12500.00, '{"owner_id": "11111111-1111-1111-1111-111111111111"}', NOW() - INTERVAL '5 months', NOW()),
+('b0000001-0001-0001-0001-000000000006', '11111111-1111-1111-1111-111111111111', 'ACC-1006', 'British Pounds', 'ASSET', 'GBP', 'ACTIVE', 12, 6200.00, '{"owner_id": "11111111-1111-1111-1111-111111111111"}', NOW() - INTERVAL '4 months', NOW()),
+('b0000001-0001-0001-0001-000000000007', '11111111-1111-1111-1111-111111111111', 'ACC-1007', 'Investment Reserve', 'ASSET', 'USD', 'ACTIVE', 30, 35000.00, '{"owner_id": "11111111-1111-1111-1111-111111111111"}', NOW() - INTERVAL '8 months', NOW()),
+('b0000001-0001-0001-0001-000000000008', '11111111-1111-1111-1111-111111111111', 'ACC-1008', 'Business Account', 'ASSET', 'USD', 'ACTIVE', 60, 98450.25, '{"owner_id": "11111111-1111-1111-1111-111111111111"}', NOW() - INTERVAL '7 months', NOW()),
+('b0000001-0001-0001-0001-000000000009', '11111111-1111-1111-1111-111111111111', 'ACC-1009', 'Retirement Fund', 'ASSET', 'USD', 'ACTIVE', 20, 125000.00, '{"owner_id": "11111111-1111-1111-1111-111111111111"}', NOW() - INTERVAL '1 year', NOW()),
+('b0000001-0001-0001-0001-000000000010', '11111111-1111-1111-1111-111111111111', 'ACC-1010', 'Kids College Fund', 'ASSET', 'USD', 'ACTIVE', 15, 45000.00, '{"owner_id": "11111111-1111-1111-1111-111111111111"}', NOW() - INTERVAL '2 years', NOW()),
+('b0000002-0002-0002-0002-000000000001', '22222222-2222-2222-2222-222222222222', 'ACC-2001', 'Main Checking', 'ASSET', 'USD', 'ACTIVE', 50, 8680.30, '{"owner_id": "22222222-2222-2222-2222-222222222222"}', NOW() - INTERVAL '5 months', NOW()),
+('b0000002-0002-0002-0002-000000000002', '22222222-2222-2222-2222-222222222222', 'ACC-2002', 'Savings', 'ASSET', 'USD', 'ACTIVE', 25, 18500.00, '{"owner_id": "22222222-2222-2222-2222-222222222222"}', NOW() - INTERVAL '5 months', NOW());
 
 -- ============================================================================
 -- CARDS (8 Cards)
 -- ============================================================================
-INSERT INTO cards (id, account_id, card_number, cvv, expiration_date, status, daily_limit, created_at, updated_at) VALUES
-('e0000001-0001-0001-0001-000000000001', 'b0000001-0001-0001-0001-000000000001', '4532015112830366', '123', '12/27', 'ACTIVE', 5000.00, NOW() - INTERVAL '11 months', NOW()),
-('e0000001-0001-0001-0001-000000000002', 'b0000001-0001-0001-0001-000000000002', '5425233430109903', '456', '03/28', 'ACTIVE', 10000.00, NOW() - INTERVAL '6 months', NOW()),
-('e0000001-0001-0001-0001-000000000003', 'b0000001-0001-0001-0001-000000000008', '374245455400126', '789', '08/26', 'ACTIVE', 25000.00, NOW() - INTERVAL '7 months', NOW()),
-('e0000001-0001-0001-0001-000000000004', 'b0000001-0001-0001-0001-000000000001', '4916338506082832', '234', '06/25', 'ACTIVE', 1000.00, NOW() - INTERVAL '2 months', NOW()),
-('e0000001-0001-0001-0001-000000000005', 'b0000001-0001-0001-0001-000000000001', '4024007198964305', '567', '09/24', 'BLOCKED', 2000.00, NOW() - INTERVAL '1 year', NOW()),
-('e0000001-0001-0001-0001-000000000006', 'b0000001-0001-0001-0001-000000000005', '4000056655665556', '321', '05/27', 'ACTIVE', 3000.00, NOW() - INTERVAL '4 months', NOW()),
-('e0000002-0001-0001-0001-000000000001', 'b0000002-0002-0002-0002-000000000001', '5105105105105100', '321', '11/26', 'ACTIVE', 3000.00, NOW() - INTERVAL '5 months', NOW()),
-('e0000002-0001-0001-0001-000000000002', 'b0000002-0002-0002-0002-000000000002', '4111111111111111', '999', '02/28', 'ACTIVE', 5000.00, NOW() - INTERVAL '3 months', NOW());
+INSERT INTO cards (id, account_id, user_id, masked_card_number, encrypted_card_number, expiration_date, status, daily_limit, created_at, updated_at) VALUES
+('e0000001-0001-0001-0001-000000000001', 'b0000001-0001-0001-0001-000000000001', '11111111-1111-1111-1111-111111111111', '**** **** **** 0366', 'encrypted_placeholder', '12/27', 'ACTIVE', 5000.00, NOW() - INTERVAL '11 months', NOW()),
+('e0000001-0001-0001-0001-000000000002', 'b0000001-0001-0001-0001-000000000002', '11111111-1111-1111-1111-111111111111', '**** **** **** 9903', 'encrypted_placeholder', '03/28', 'ACTIVE', 10000.00, NOW() - INTERVAL '6 months', NOW()),
+('e0000001-0001-0001-0001-000000000003', 'b0000001-0001-0001-0001-000000000008', '11111111-1111-1111-1111-111111111111', '**** **** **** 0126', 'encrypted_placeholder', '08/26', 'ACTIVE', 25000.00, NOW() - INTERVAL '7 months', NOW()),
+('e0000001-0001-0001-0001-000000000004', 'b0000001-0001-0001-0001-000000000001', '11111111-1111-1111-1111-111111111111', '**** **** **** 2832', 'encrypted_placeholder', '06/25', 'ACTIVE', 1000.00, NOW() - INTERVAL '2 months', NOW()),
+('e0000001-0001-0001-0001-000000000005', 'b0000001-0001-0001-0001-000000000001', '11111111-1111-1111-1111-111111111111', '**** **** **** 4305', 'encrypted_placeholder', '09/24', 'BLOCKED', 2000.00, NOW() - INTERVAL '1 year', NOW()),
+('e0000001-0001-0001-0001-000000000006', 'b0000001-0001-0001-0001-000000000005', '11111111-1111-1111-1111-111111111111', '**** **** **** 5556', 'encrypted_placeholder', '05/27', 'ACTIVE', 3000.00, NOW() - INTERVAL '4 months', NOW()),
+('e0000002-0001-0001-0001-000000000001', 'b0000002-0002-0002-0002-000000000001', '22222222-2222-2222-2222-222222222222', '**** **** **** 5100', 'encrypted_placeholder', '11/26', 'ACTIVE', 3000.00, NOW() - INTERVAL '5 months', NOW()),
+('e0000002-0001-0001-0001-000000000002', 'b0000002-0002-0002-0002-000000000002', '22222222-2222-2222-2222-222222222222', '**** **** **** 1111', 'encrypted_placeholder', '02/28', 'ACTIVE', 5000.00, NOW() - INTERVAL '3 months', NOW());
 
 -- ============================================================================
 -- JOURNAL ENTRIES & POSTINGS (100+ transactions over 12 months)
@@ -362,4 +362,4 @@ SELECT count(*) as accounts FROM accounts;
 SELECT count(*) as cards FROM cards;
 SELECT count(*) as transactions FROM journal_entries;
 SELECT count(*) as postings FROM postings;
-SELECT 'Login: demo@neobank.com / password' as credentials;
+SELECT 'Login: demo@neobank.com / password123' as credentials;

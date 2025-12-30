@@ -1,0 +1,158 @@
+# NeoBank Argo CD AppProject
+# Defines boundaries and permissions for NeoBank applications
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: neobank
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: NeoBank Banking Application Project
+
+  # Source repositories allowed for this project
+  sourceRepos:
+    - "git@github.com:your-org/neobank.git"
+    - "git@github.com:your-org/neobank-manifests.git"
+    - "https://charts.bitnami.com/bitnami"
+    - "https://prometheus-community.github.io/helm-charts"
+    - "https://grafana.github.io/helm-charts"
+
+  # Destination clusters and namespaces
+  destinations:
+    # Dev environment
+    - namespace: neobank-dev
+      server: https://kubernetes.default.svc
+    # Staging environment
+    - namespace: neobank-staging
+      server: https://kubernetes.default.svc
+    # Production environment
+    - namespace: neobank-prod
+      server: https://kubernetes.default.svc
+    # Monitoring namespace
+    - namespace: monitoring
+      server: https://kubernetes.default.svc
+
+  # Cluster resource whitelist
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+    - group: "rbac.authorization.k8s.io"
+      kind: ClusterRole
+    - group: "rbac.authorization.k8s.io"
+      kind: ClusterRoleBinding
+    - group: "networking.k8s.io"
+      kind: IngressClass
+    - group: "apiextensions.k8s.io"
+      kind: CustomResourceDefinition
+
+  # Namespace resource blacklist (deny dangerous resources)
+  namespaceResourceBlacklist:
+    - group: ""
+      kind: ResourceQuota
+    - group: ""
+      kind: LimitRange
+
+  # Namespace resource whitelist
+  namespaceResourceWhitelist:
+    - group: ""
+      kind: "*"
+    - group: "apps"
+      kind: "*"
+    - group: "batch"
+      kind: "*"
+    - group: "networking.k8s.io"
+      kind: "*"
+    - group: "autoscaling"
+      kind: "*"
+    - group: "policy"
+      kind: "*"
+    - group: "external-secrets.io"
+      kind: "*"
+
+  # Roles for project members
+  roles:
+    # Developers can sync to dev only
+    - name: developer
+      description: Developer access - can sync to dev environment
+      policies:
+        - p, proj:neobank:developer, applications, get, neobank/*, allow
+        - p, proj:neobank:developer, applications, sync, neobank/*-dev, allow
+        - p, proj:neobank:developer, logs, get, neobank/*, allow
+      groups:
+        - neobank-developers
+
+    # QA can sync to dev and staging
+    - name: qa
+      description: QA access - can sync to dev and staging
+      policies:
+        - p, proj:neobank:qa, applications, get, neobank/*, allow
+        - p, proj:neobank:qa, applications, sync, neobank/*-dev, allow
+        - p, proj:neobank:qa, applications, sync, neobank/*-staging, allow
+        - p, proj:neobank:qa, logs, get, neobank/*, allow
+      groups:
+        - neobank-qa
+
+    # Release managers can sync to all environments
+    - name: release-manager
+      description: Release manager - can sync to all environments including prod
+      policies:
+        - p, proj:neobank:release-manager, applications, *, neobank/*, allow
+        - p, proj:neobank:release-manager, logs, get, neobank/*, allow
+      groups:
+        - neobank-release-managers
+
+    # Read-only for auditors
+    - name: auditor
+      description: Read-only access for compliance auditors
+      policies:
+        - p, proj:neobank:auditor, applications, get, neobank/*, allow
+        - p, proj:neobank:auditor, logs, get, neobank/*, allow
+      groups:
+        - neobank-auditors
+
+  # Sync windows - restrict prod deployments to business hours
+  syncWindows:
+    # Allow dev anytime
+    - kind: allow
+      schedule: "* * * * *"
+      duration: 24h
+      applications:
+        - "*-dev"
+      namespaces:
+        - neobank-dev
+
+    # Allow staging during business hours
+    - kind: allow
+      schedule: "0 6 * * 1-5" # 6 AM weekdays
+      duration: 14h
+      applications:
+        - "*-staging"
+      namespaces:
+        - neobank-staging
+
+    # Restrict prod to deployment windows (Tue-Thu 10AM-4PM)
+    - kind: allow
+      schedule: "0 10 * * 2-4" # 10 AM Tue-Thu
+      duration: 6h
+      applications:
+        - "*-prod"
+      namespaces:
+        - neobank-prod
+
+    # Block prod deployments during freeze periods
+    - kind: deny
+      schedule: "0 0 20 12 *" # Dec 20
+      duration: 336h # 2 weeks holiday freeze
+      applications:
+        - "*-prod"
+      namespaces:
+        - neobank-prod
+
+  # Orphaned resources monitoring
+  orphanedResources:
+    warn: true
+    ignore:
+      - group: ""
+        kind: ConfigMap
+        name: kube-root-ca.crt

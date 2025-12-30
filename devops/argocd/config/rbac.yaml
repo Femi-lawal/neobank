@@ -1,0 +1,152 @@
+# Argo CD RBAC Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-rbac-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  # Policy CSV for fine-grained access control
+  policy.csv: |
+    # Roles
+    # p, <role/user/group>, <resource>, <action>, <object>, <allow/deny>
+
+    # Admin role - full access
+    p, role:admin, applications, *, */*, allow
+    p, role:admin, clusters, *, *, allow
+    p, role:admin, repositories, *, *, allow
+    p, role:admin, projects, *, *, allow
+    p, role:admin, accounts, *, *, allow
+    p, role:admin, gpgkeys, *, *, allow
+    p, role:admin, logs, *, *, allow
+    p, role:admin, exec, *, */*, allow
+
+    # Developer role - limited to dev environment
+    p, role:developer, applications, get, */*, allow
+    p, role:developer, applications, sync, */*-dev, allow
+    p, role:developer, applications, action/*, */*-dev, allow
+    p, role:developer, logs, get, */*-dev, allow
+    p, role:developer, repositories, get, *, allow
+    p, role:developer, projects, get, *, allow
+
+    # QA role - dev and staging access
+    p, role:qa, applications, get, */*, allow
+    p, role:qa, applications, sync, */*-dev, allow
+    p, role:qa, applications, sync, */*-staging, allow
+    p, role:qa, applications, action/*, */*-dev, allow
+    p, role:qa, applications, action/*, */*-staging, allow
+    p, role:qa, logs, get, */*, allow
+    p, role:qa, repositories, get, *, allow
+    p, role:qa, projects, get, *, allow
+
+    # Release Manager - full environment access
+    p, role:release-manager, applications, *, */*, allow
+    p, role:release-manager, logs, get, */*, allow
+    p, role:release-manager, repositories, get, *, allow
+    p, role:release-manager, projects, get, *, allow
+
+    # Auditor role - read-only
+    p, role:auditor, applications, get, */*, allow
+    p, role:auditor, logs, get, */*, allow
+    p, role:auditor, repositories, get, *, allow
+    p, role:auditor, projects, get, *, allow
+    p, role:auditor, clusters, get, *, allow
+
+    # CI/CD Service Account - can sync applications (used by Jenkins)
+    p, role:ci-cd, applications, get, */*, allow
+    p, role:ci-cd, applications, sync, */*-dev, allow
+    p, role:ci-cd, applications, sync, */*-staging, allow
+    # CI cannot sync to prod - requires manual approval
+
+    # Group mappings (SSO groups to roles)
+    g, neobank-admins, role:admin
+    g, neobank-developers, role:developer
+    g, neobank-qa, role:qa
+    g, neobank-release-managers, role:release-manager
+    g, neobank-auditors, role:auditor
+    g, jenkins-service-account, role:ci-cd
+
+  # Default policy for authenticated users
+  policy.default: role:readonly
+
+  # Scopes to request from OIDC provider
+  scopes: "[groups, email]"
+---
+# Argo CD ConfigMap for SSO and general settings
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  # Application URLs
+  url: https://argocd.neobank.example.com
+
+  # OIDC configuration (example with AWS Cognito)
+  oidc.config: |
+    name: AWS Cognito
+    issuer: https://cognito-idp.us-east-1.amazonaws.com/us-east-1_XXXXXXXXX
+    clientID: your-client-id
+    clientSecret: $oidc.cognito.clientSecret
+    requestedScopes:
+      - openid
+      - profile
+      - email
+    requestedIDTokenClaims:
+      groups:
+        essential: true
+
+  # Dex configuration (alternative SSO)
+  # dex.config: |
+  #   connectors:
+  #     - type: github
+  #       id: github
+  #       name: GitHub
+  #       config:
+  #         clientID: $dex.github.clientID
+  #         clientSecret: $dex.github.clientSecret
+  #         orgs:
+  #           - name: your-org
+
+  # Resource customizations
+  resource.customizations: |
+    admissionregistration.k8s.io/MutatingWebhookConfiguration:
+      ignoreDifferences: |
+        jsonPointers:
+          - /webhooks/0/clientConfig/caBundle
+    admissionregistration.k8s.io/ValidatingWebhookConfiguration:
+      ignoreDifferences: |
+        jsonPointers:
+          - /webhooks/0/clientConfig/caBundle
+
+  # Health checks for custom resources
+  resource.customizations.health.argoproj.io_Application: |
+    hs = {}
+    hs.status = "Progressing"
+    hs.message = ""
+    if obj.status ~= nil then
+      if obj.status.health ~= nil then
+        hs.status = obj.status.health.status
+        if obj.status.health.message ~= nil then
+          hs.message = obj.status.health.message
+        end
+      end
+    end
+    return hs
+
+  # Kustomize build options
+  kustomize.buildOptions: --enable-helm
+
+  # Status badge enabled
+  statusbadge.enabled: "true"
+
+  # Admin account disabled (use SSO)
+  admin.enabled: "false"
+
+  # Anonymous access disabled
+  users.anonymous.enabled: "false"

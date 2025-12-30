@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"os"
 	"testing"
 
 	"github.com/femi-lawal/new_bank/backend/card-service/internal/model"
@@ -9,6 +10,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
+
+func init() {
+	// Set required env var for testing (32 bytes)
+	os.Setenv("CARD_ENCRYPTION_KEY", "test_encryption_key_32_bytes_lni")
+}
 
 // MockCardRepository is a mock implementation of the card repository
 type MockCardRepository struct {
@@ -28,6 +34,19 @@ func (m *MockCardRepository) GetCardByNumber(pan string) (*model.Card, error) {
 	return args.Get(0).(*model.Card), args.Error(1)
 }
 
+func (m *MockCardRepository) GetCardByID(id uuid.UUID) (*model.Card, error) {
+	args := m.Called(id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.Card), args.Error(1)
+}
+
+func (m *MockCardRepository) VerifyAccountOwnership(userID, accountID uuid.UUID) (bool, error) {
+	args := m.Called(userID, accountID)
+	return args.Bool(0), args.Error(1)
+}
+
 func (m *MockCardRepository) ListCardsByAccount(accountID string) ([]model.Card, error) {
 	args := m.Called(accountID)
 	return args.Get(0).([]model.Card), args.Error(1)
@@ -39,7 +58,6 @@ func (m *MockCardRepository) ListCardsByUser(userID string) ([]model.Card, error
 }
 
 func TestCardService_IssueCard_InvalidUserID(t *testing.T) {
-	mockRepo := new(MockCardRepository)
 	svc := NewCardService(nil)
 
 	_, err := svc.IssueCard("invalid-uuid", uuid.New().String())
@@ -49,7 +67,6 @@ func TestCardService_IssueCard_InvalidUserID(t *testing.T) {
 }
 
 func TestCardService_IssueCard_InvalidAccountID(t *testing.T) {
-	mockRepo := new(MockCardRepository)
 	svc := NewCardService(nil)
 
 	_, err := svc.IssueCard(uuid.New().String(), "invalid-uuid")
@@ -60,29 +77,32 @@ func TestCardService_IssueCard_InvalidAccountID(t *testing.T) {
 
 func TestCardService_ListCardsByUser(t *testing.T) {
 	mockRepo := new(MockCardRepository)
+	svc := NewCardService(mockRepo) // Inject mock repo
 
 	userID := uuid.New().String()
 	expectedCards := []model.Card{
-		{CardNumber: "4111111111111111", Status: model.CardActive},
-		{CardNumber: "4222222222222222", Status: model.CardActive},
+		{MaskedCardNumber: "**** **** **** 1111", Status: model.CardActive},
+		{MaskedCardNumber: "**** **** **** 2222", Status: model.CardActive},
 	}
 
 	mockRepo.On("ListCardsByUser", userID).Return(expectedCards, nil)
 
-	cards, err := mockRepo.ListCardsByUser(userID)
+	cards, err := svc.ListCardsByUser(userID) // Use service method
 
 	assert.NoError(t, err)
 	assert.Len(t, cards, 2)
+	assert.Equal(t, "**** **** **** 1111", cards[0].MaskedCardNumber)
 	mockRepo.AssertExpectations(t)
 }
 
 func TestCardService_ListCardsByUser_Empty(t *testing.T) {
 	mockRepo := new(MockCardRepository)
+	svc := NewCardService(mockRepo)
 
 	userID := uuid.New().String()
 	mockRepo.On("ListCardsByUser", userID).Return([]model.Card{}, nil)
 
-	cards, err := mockRepo.ListCardsByUser(userID)
+	cards, err := svc.ListCardsByUser(userID)
 
 	assert.NoError(t, err)
 	assert.Empty(t, cards)
@@ -91,11 +111,12 @@ func TestCardService_ListCardsByUser_Empty(t *testing.T) {
 
 func TestCardService_ListCardsByUser_Error(t *testing.T) {
 	mockRepo := new(MockCardRepository)
+	svc := NewCardService(mockRepo)
 
 	userID := uuid.New().String()
 	mockRepo.On("ListCardsByUser", userID).Return([]model.Card{}, errors.New("database error"))
 
-	cards, err := mockRepo.ListCardsByUser(userID)
+	cards, err := svc.ListCardsByUser(userID)
 
 	assert.Error(t, err)
 	assert.Empty(t, cards)
@@ -104,17 +125,17 @@ func TestCardService_ListCardsByUser_Error(t *testing.T) {
 
 func TestCardModel(t *testing.T) {
 	card := model.Card{
-		UserID:         uuid.New(),
-		AccountID:      uuid.New(),
-		CardNumber:     "4111111111111111",
-		CVV:            "123",
-		ExpirationDate: "12/27",
-		Status:         model.CardActive,
+		UserID:              uuid.New(),
+		AccountID:           uuid.New(),
+		MaskedCardNumber:    "**** **** **** 1111",
+		EncryptedCardNumber: "enc_data",
+		ExpirationDate:      "12/27",
+		Status:              model.CardActive,
 	}
 
 	assert.Equal(t, model.CardActive, card.Status)
-	assert.Len(t, card.CardNumber, 16)
-	assert.Len(t, card.CVV, 3)
+	assert.Equal(t, "**** **** **** 1111", card.MaskedCardNumber)
+	// Removed checks for CardNumber and CVV as they don't exist
 }
 
 func TestCardStatus(t *testing.T) {

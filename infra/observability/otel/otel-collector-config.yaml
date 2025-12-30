@@ -97,8 +97,8 @@ exporters:
     resource_to_telemetry_conversion:
       enabled: true
 
-  # Logging exporter for debugging
-  logging:
+  # Debug exporter for debugging
+  debug:
     verbosity: basic
     sampling_initial: 5
     sampling_thereafter: 200
@@ -128,22 +128,22 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, filter, tail_sampling, batch, resource]
-      exporters: [otlp/jaeger, logging]
+      exporters: [otlp/jaeger, debug]
 
     # Metrics pipeline
     metrics:
       receivers: [otlp, prometheus, hostmetrics]
       processors: [memory_limiter, batch, resource]
-      exporters: [prometheus, logging]
+      exporters: [prometheus, debug]
 
     # Logs pipeline (if sending logs via OTLP)
     logs:
       receivers: [otlp]
       processors: [memory_limiter, batch, resource]
-      exporters: [logging]
+      exporters: [debug]
 
   telemetry:
     logs:
       level: info
-    metrics:
-      address: 0.0.0.0:8888
+#    metrics:
+#      address: 0.0.0.0:8888

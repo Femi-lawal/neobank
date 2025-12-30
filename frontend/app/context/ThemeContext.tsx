@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useEffect, ReactNode, useSyncExternalStore, useCallback } from 'react';
 
 type Theme = 'light' | 'dark';
 
@@ -12,36 +12,44 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
+// Subscribe to localStorage changes (for cross-tab sync)
+const subscribeToStorage = (callback: () => void) => {
+    window.addEventListener('storage', callback);
+    return () => window.removeEventListener('storage', callback);
+};
+
+// Get theme from localStorage
+const getStoredTheme = (): Theme => {
+    if (typeof window === 'undefined') return 'dark';
+    const saved = localStorage.getItem('neobank-theme') as Theme | null;
+    if (saved) return saved;
+    return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+};
+
+// Server snapshot always returns dark (default)
+const getServerSnapshot = (): Theme => 'dark';
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
-    const [theme, setThemeState] = useState<Theme>('dark');
-    const [mounted, setMounted] = useState(false);
+    const theme = useSyncExternalStore(subscribeToStorage, getStoredTheme, getServerSnapshot);
+    const mounted = useSyncExternalStore(() => () => {}, () => true, () => false);
 
-    useEffect(() => {
-        setMounted(true);
-        // Load saved theme from localStorage
-        const savedTheme = localStorage.getItem('neobank-theme') as Theme;
-        if (savedTheme) {
-            setThemeState(savedTheme);
-        } else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
-            setThemeState('light');
-        }
-    }, []);
-
+    // Apply theme to document when it changes
     useEffect(() => {
         if (mounted) {
-            // Apply theme to document
             document.documentElement.setAttribute('data-theme', theme);
-            localStorage.setItem('neobank-theme', theme);
         }
     }, [theme, mounted]);
 
-    const toggleTheme = () => {
-        setThemeState(prev => prev === 'dark' ? 'light' : 'dark');
-    };
+    const setTheme = useCallback((newTheme: Theme) => {
+        localStorage.setItem('neobank-theme', newTheme);
+        // Trigger storage event for useSyncExternalStore
+        window.dispatchEvent(new StorageEvent('storage', { key: 'neobank-theme' }));
+    }, []);
 
-    const setTheme = (newTheme: Theme) => {
-        setThemeState(newTheme);
-    };
+    const toggleTheme = useCallback(() => {
+        const newTheme = theme === 'dark' ? 'light' : 'dark';
+        setTheme(newTheme);
+    }, [theme, setTheme]);
 
     // Prevent flash of wrong theme
     if (!mounted) {
@@ -55,10 +63,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     );
 }
 
+// Default theme values for when ThemeProvider is not available
+const defaultThemeContext: ThemeContextType = {
+    theme: 'dark',
+    toggleTheme: () => {},
+    setTheme: () => {},
+};
+
 export function useTheme() {
     const context = useContext(ThemeContext);
-    if (context === undefined) {
-        throw new Error('useTheme must be used within a ThemeProvider');
-    }
-    return context;
+    // Return default values if context is not available (e.g., during SSR or outside provider)
+    return context ?? defaultThemeContext;
 }

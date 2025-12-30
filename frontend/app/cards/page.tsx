@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { motion } from 'framer-motion';
@@ -8,10 +8,10 @@ import { Plus, Snowflake, Lock, MoreVertical, Eye, EyeOff, Settings, AlertTriang
 import { useTheme } from '../context/ThemeContext';
 
 interface CardData {
-    ID: string;
-    CardNumber: string;
-    ExpirationDate: string;
-    Status: string;
+    id: string;
+    card_number: string;
+    expiration_date: string;
+    status: string;
     isFrozen?: boolean;
 }
 
@@ -25,29 +25,43 @@ export default function CardsPage() {
     const { theme } = useTheme();
     const isDark = theme === 'dark';
 
+    const fetchCards = useCallback((accId: string) => {
+        const token = localStorage.getItem('token');
+        fetch(`/api/card/cards?account_id=${accId}`, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        })
+            .then(res => res.json())
+            .then(data => setCards(data || []));
+    }, []);
+
     useEffect(() => {
-        fetch('/api/ledger/accounts')
+        const token = localStorage.getItem('token');
+        fetch('/api/ledger/accounts', {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        })
             .then(res => res.json())
             .then(data => {
                 setAccounts(data || []);
                 if (data && data.length > 0) {
-                    setAccountID(data[0].ID);
-                    fetchCards(data[0].ID);
+                    setAccountID(data[0].id);
+                    fetchCards(data[0].id);
                 }
             });
-    }, []);
-
-    const fetchCards = (accId: string) => {
-        fetch(`/api/card/cards?account_id=${accId}`)
-            .then(res => res.json())
-            .then(data => setCards(data || []));
-    };
+    }, [fetchCards]);
 
     const handleIssueCard = async () => {
         if (!accountID) return;
+        const token = localStorage.getItem('token');
         await fetch('/api/card/cards', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify({ account_id: accountID })
         });
         fetchCards(accountID);
@@ -108,11 +122,11 @@ export default function CardsPage() {
                             fetchCards(e.target.value);
                         }}
                         className={`rounded-xl px-4 py-2.5 focus:outline-none focus:ring-1 focus:ring-brand-500 ${isDark
-                                ? 'bg-surface-800 border-surface-700 text-white'
-                                : 'bg-white border border-slate-200 text-slate-900'
+                            ? 'bg-surface-800 border-surface-700 text-white'
+                            : 'bg-white border border-slate-200 text-slate-900'
                             }`}
                     >
-                        {accounts.map((a: any) => <option key={a.ID} value={a.ID}>{a.Name}</option>)}
+                        {accounts.map((a: { id: string; name: string }) => <option key={a.id} value={a.id}>{a.name}</option>)}
                     </select>
                     <Button onClick={handleIssueCard}>
                         <Plus size={18} className="mr-2" /> Issue Virtual Card
@@ -142,12 +156,12 @@ export default function CardsPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
                 {cards.map((c, i) => {
-                    const isFrozen = frozenCards.has(c.ID);
+                    const isFrozen = frozenCards.has(c.id);
                     const gradientClass = cardGradients[i % cardGradients.length];
 
                     return (
                         <motion.div
-                            key={c.ID}
+                            key={c.id}
                             initial={{ scale: 0.9, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
                             transition={{ delay: i * 0.1 }}
@@ -200,7 +214,7 @@ export default function CardsPage() {
                                         </div>
 
                                         <div className="font-mono text-xl tracking-[0.15em] text-shadow-sm">
-                                            {formatCardNumber(c.CardNumber, c.ID)}
+                                            {formatCardNumber(c.card_number, c.id)}
                                         </div>
                                     </div>
 
@@ -211,7 +225,7 @@ export default function CardsPage() {
                                         </div>
                                         <div>
                                             <div className="text-[10px] text-white/60 mb-1">Expires</div>
-                                            <div className="font-semibold text-white">{c.ExpirationDate}</div>
+                                            <div className="font-semibold text-white">{c.expiration_date}</div>
                                         </div>
                                     </div>
                                 </div>
@@ -223,7 +237,7 @@ export default function CardsPage() {
                                     variant={isFrozen ? "primary" : "secondary"}
                                     size="sm"
                                     className="flex-1"
-                                    onClick={() => toggleFreeze(c.ID)}
+                                    onClick={() => toggleFreeze(c.id)}
                                 >
                                     {isFrozen ? (
                                         <>
@@ -239,9 +253,9 @@ export default function CardsPage() {
                                     variant="secondary"
                                     size="sm"
                                     className="flex-1"
-                                    onClick={() => toggleHideNumber(c.ID)}
+                                    onClick={() => toggleHideNumber(c.id)}
                                 >
-                                    {hiddenNumbers.has(c.ID) ? (
+                                    {hiddenNumbers.has(c.id) ? (
                                         <>
                                             <Eye size={14} className="mr-2" /> Show
                                         </>
@@ -255,35 +269,35 @@ export default function CardsPage() {
                                     <Button
                                         variant="ghost"
                                         size="sm"
-                                        onClick={() => setShowCardMenu(showCardMenu === c.ID ? null : c.ID)}
+                                        onClick={() => setShowCardMenu(showCardMenu === c.id ? null : c.id)}
                                     >
                                         <MoreVertical size={18} />
                                     </Button>
 
-                                    {showCardMenu === c.ID && (
+                                    {showCardMenu === c.id && (
                                         <motion.div
                                             initial={{ opacity: 0, y: -10 }}
                                             animate={{ opacity: 1, y: 0 }}
                                             className={`absolute right-0 top-full mt-2 w-48 rounded-xl shadow-xl border overflow-hidden z-50 ${isDark
-                                                    ? 'bg-surface-800 border-surface-700'
-                                                    : 'bg-white border-slate-200'
+                                                ? 'bg-surface-800 border-surface-700'
+                                                : 'bg-white border-slate-200'
                                                 }`}
                                         >
                                             <button className={`w-full px-4 py-3 text-left text-sm flex items-center gap-3 transition-colors ${isDark
-                                                    ? 'text-surface-300 hover:bg-surface-700'
-                                                    : 'text-slate-600 hover:bg-slate-50'
+                                                ? 'text-surface-300 hover:bg-surface-700'
+                                                : 'text-slate-600 hover:bg-slate-50'
                                                 }`}>
                                                 <Settings size={16} /> Card Settings
                                             </button>
                                             <button className={`w-full px-4 py-3 text-left text-sm flex items-center gap-3 transition-colors ${isDark
-                                                    ? 'text-surface-300 hover:bg-surface-700'
-                                                    : 'text-slate-600 hover:bg-slate-50'
+                                                ? 'text-surface-300 hover:bg-surface-700'
+                                                : 'text-slate-600 hover:bg-slate-50'
                                                 }`}>
                                                 <Lock size={16} /> Set Spending Limit
                                             </button>
                                             <button className={`w-full px-4 py-3 text-left text-sm flex items-center gap-3 transition-colors ${isDark
-                                                    ? 'text-red-400 hover:bg-surface-700'
-                                                    : 'text-red-500 hover:bg-red-50'
+                                                ? 'text-red-400 hover:bg-surface-700'
+                                                : 'text-red-500 hover:bg-red-50'
                                                 }`}>
                                                 <AlertTriangle size={16} /> Report Lost
                                             </button>

@@ -5,10 +5,9 @@ namespace: neobank
 
 resources:
   - namespace.yaml
-  - secrets.yaml
-  - configmap.yaml
-  - postgres.yaml
-  - redis.yaml
+  - service-accounts.yaml
+  - external-secrets-new.yaml
+  - configmap-new.yaml
   - identity-service.yaml
   - ledger-service.yaml
   - payment-service.yaml
@@ -16,6 +15,9 @@ resources:
   - card-service.yaml
   - frontend.yaml
   - ingress.yaml
+  - hpa.yaml
+  - network-policies.yaml
+  - pod-disruption-budgets.yaml
 
 commonLabels:
   app.kubernetes.io/part-of: neobank

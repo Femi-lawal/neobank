@@ -1,0 +1,145 @@
+# FinOps Metrics Exporter
+# Custom metrics exporter for cost tracking
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: finops-metrics-exporter
+  namespace: finops
+  labels:
+    app: finops-metrics-exporter
+    cost-center: platform-operations
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: finops-metrics-exporter
+  template:
+    metadata:
+      labels:
+        app: finops-metrics-exporter
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: finops-metrics-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: metrics-exporter
+          image: bitnami/kubectl:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/bash
+            - -c
+            - |
+              # Simple metrics exporter script
+              while true; do
+                echo "# FinOps metrics collected at $(date)"
+                # Export resource quota usage
+                kubectl get resourcequota -n neobank -o json | \
+                  jq -r '.items[] | "neobank_resource_quota_used{quota=\"\(.metadata.name)\",resource=\"cpu\"} \(.status.used["requests.cpu"] // 0)"'
+                sleep 60
+              done
+          ports:
+            - containerPort: 8080
+              name: metrics
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "100m"
+              memory: "128Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: finops-metrics-sa
+  namespace: finops
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: finops-metrics-reader
+rules:
+  - apiGroups: [""]
+    resources:
+      - pods
+      - nodes
+      - namespaces
+      - resourcequotas
+      - persistentvolumeclaims
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - replicasets
+      - statefulsets
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources:
+      - pods
+      - nodes
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: finops-metrics-reader-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: finops-metrics-reader
+subjects:
+  - kind: ServiceAccount
+    name: finops-metrics-sa
+    namespace: finops
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: finops-metrics-exporter
+  namespace: finops
+  labels:
+    app: finops-metrics-exporter
+spec:
+  selector:
+    app: finops-metrics-exporter
+  ports:
+    - name: metrics
+      port: 8080
+      targetPort: 8080
+---
+# ServiceMonitor for Prometheus Operator
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: finops-servicemonitor
+  namespace: finops
+data:
+  servicemonitor.yaml: |
+    apiVersion: monitoring.coreos.com/v1
+    kind: ServiceMonitor
+    metadata:
+      name: finops-metrics
+      namespace: finops
+      labels:
+        app: finops-metrics-exporter
+    spec:
+      selector:
+        matchLabels:
+          app: finops-metrics-exporter
+      endpoints:
+        - port: metrics
+          interval: 60s
+          path: /metrics

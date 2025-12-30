@@ -5,6 +5,13 @@ metadata:
   namespace: neobank
   labels:
     app: frontend
+    app.kubernetes.io/name: frontend
+    app.kubernetes.io/part-of: neobank
+    app.kubernetes.io/component: frontend
+  annotations:
+    description: "Customer-facing web application"
+    owner: "platform-team"
+    cost-center: "engineering"
 spec:
   replicas: 2
   selector:
@@ -15,15 +22,54 @@ spec:
       labels:
         app: frontend
     spec:
+      serviceAccountName: frontend-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: frontend
           image: neobank/frontend:latest
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
           ports:
             - containerPort: 3000
           env:
             - name: NODE_ENV
               value: "production"
+            - name: NEXT_PUBLIC_IDENTITY_SERVICE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: neobank-config
+                  key: IDENTITY_SERVICE_URL
+            - name: NEXT_PUBLIC_LEDGER_SERVICE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: neobank-config
+                  key: LEDGER_SERVICE_URL
+            - name: NEXT_PUBLIC_PAYMENT_SERVICE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: neobank-config
+                  key: PAYMENT_SERVICE_URL
+            - name: NEXT_PUBLIC_CARD_SERVICE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: neobank-config
+                  key: CARD_SERVICE_URL
+            - name: NEXT_PUBLIC_PRODUCT_SERVICE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: neobank-config
+                  key: PRODUCT_SERVICE_URL
           readinessProbe:
             httpGet:
               path: /

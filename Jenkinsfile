@@ -1,240 +1,388 @@
-// NeoBank Jenkins Pipeline
-// Multi-stage CI/CD pipeline for building, testing, and deploying NeoBank
+// NeoBank Jenkins Pipeline (GitOps)
+// CI pipeline: Build, test, scan, sign images, then update Git manifests
+// IMPORTANT: Jenkins does NOT deploy directly to Kubernetes
+// Argo CD handles all deployments via GitOps
 
 pipeline {
     agent any
     
     environment {
-        DOCKER_REGISTRY = 'registry.neobank.com'
-        DOCKER_CREDENTIALS = 'docker-registry-creds'
-        KUBECONFIG = credentials('kubeconfig')
-        SLACK_CHANNEL = '#deployments'
+        // AWS ECR Registry
+        AWS_REGION = 'us-east-1'
+        AWS_ACCOUNT_ID = credentials('aws-account-id')
+        ECR_REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+        
+        // Git repositories
+        MANIFEST_REPO = 'git@github.com:your-org/neobank-manifests.git'
+        MANIFEST_CREDENTIALS = 'manifest-repo-ssh'
+        
+        // Notifications
+        SLACK_CHANNEL = '#neobank-ci'
     }
     
     options {
-        buildDiscarder(logRotator(numToKeepStr: '10'))
-        timeout(time: 30, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+        timeout(time: 45, unit: 'MINUTES')
         timestamps()
         disableConcurrentBuilds()
+        ansiColor('xterm')
     }
     
     parameters {
-        choice(name: 'ENVIRONMENT', choices: ['dev', 'staging', 'prod'], description: 'Deployment environment')
-        booleanParam(name: 'RUN_TESTS', defaultValue: true, description: 'Run tests')
-        booleanParam(name: 'DEPLOY', defaultValue: true, description: 'Deploy after build')
-        string(name: 'VERSION', defaultValue: '', description: 'Version tag (leave empty for git SHA)')
+        choice(
+            name: 'SERVICES', 
+            choices: ['all', 'identity-service', 'ledger-service', 'payment-service', 'product-service', 'card-service', 'frontend'], 
+            description: 'Service(s) to build'
+        )
+        choice(
+            name: 'TARGET_ENV', 
+            choices: ['dev', 'staging'], 
+            description: 'Target environment for manifest update (prod requires manual PR)'
+        )
+        booleanParam(
+            name: 'SKIP_TESTS', 
+            defaultValue: false, 
+            description: 'Skip test stage (emergency builds only)'
+        )
+        booleanParam(
+            name: 'UPDATE_MANIFESTS', 
+            defaultValue: true, 
+            description: 'Create PR to update manifests repo'
+        )
     }
     
     stages {
+        // ============================================
+        // Stage 1: Checkout & Setup
+        // ============================================
         stage('Checkout') {
             steps {
                 checkout scm
                 script {
                     env.GIT_SHA = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
-                    env.VERSION = params.VERSION ?: env.GIT_SHA
+                    env.GIT_FULL_SHA = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+                    env.GIT_COMMIT_MSG = sh(script: 'git log -1 --pretty=%B', returnStdout: true).trim()
+                    env.IMAGE_TAG = env.GIT_SHA
+                    
+                    // Determine which services to build
+                    if (params.SERVICES == 'all') {
+                        env.BUILD_SERVICES = 'identity-service ledger-service payment-service product-service card-service frontend'
+                    } else {
+                        env.BUILD_SERVICES = params.SERVICES
+                    }
+                    
+                    echo "Building services: ${env.BUILD_SERVICES}"
+                    echo "Image tag: ${env.IMAGE_TAG}"
                 }
             }
         }
         
-        stage('Build Backend Services') {
-            parallel {
-                stage('Identity Service') {
-                    steps {
-                        buildService('identity-service')
-                    }
-                }
-                stage('Ledger Service') {
-                    steps {
-                        buildService('ledger-service')
-                    }
-                }
-                stage('Payment Service') {
-                    steps {
-                        buildService('payment-service')
-                    }
-                }
-                stage('Product Service') {
-                    steps {
-                        buildService('product-service')
-                    }
-                }
-                stage('Card Service') {
-                    steps {
-                        buildService('card-service')
-                    }
-                }
-            }
-        }
-        
-        stage('Build Frontend') {
+        // ============================================
+        // Stage 2: Build Docker Images
+        // ============================================
+        stage('Build Images') {
             steps {
-                dir('frontend') {
-                    sh '''
-                        docker build -t ${DOCKER_REGISTRY}/frontend:${VERSION} .
-                        docker tag ${DOCKER_REGISTRY}/frontend:${VERSION} ${DOCKER_REGISTRY}/frontend:latest
-                    '''
+                script {
+                    // Login to ECR
+                    sh """
+                        aws ecr get-login-password --region ${AWS_REGION} | \
+                        docker login --username AWS --password-stdin ${ECR_REGISTRY}
+                    """
+                    
+                    // Build images in parallel
+                    def builds = [:]
+                    env.BUILD_SERVICES.split(' ').each { service ->
+                        builds[service] = {
+                            buildDockerImage(service)
+                        }
+                    }
+                    parallel builds
                 }
             }
         }
         
-        stage('Run Tests') {
+        // ============================================
+        // Stage 3: Run Tests
+        // ============================================
+        stage('Test') {
             when {
-                expression { params.RUN_TESTS }
+                expression { !params.SKIP_TESTS }
             }
             parallel {
-                stage('Backend Tests') {
+                stage('Backend Unit Tests') {
+                    when {
+                        expression { env.BUILD_SERVICES.contains('service') }
+                    }
                     steps {
                         dir('backend') {
                             sh '''
-                                cd shared-lib && go test ./... -v -coverprofile=coverage.out
-                                cd ../identity-service && go test ./... -v
-                                cd ../ledger-service && go test ./... -v
-                                cd ../payment-service && go test ./... -v
+                                go work sync
+                                go test -v -race -coverprofile=coverage.out ./...
                             '''
                         }
                     }
                     post {
                         always {
-                            publishCoverage adapters: [coberturaAdapter('backend/**/coverage.out')]
+                            publishCoverage adapters: [coberturaAdapter('backend/coverage.out')]
                         }
                     }
                 }
-                stage('Frontend Tests') {
+                
+                stage('Frontend Unit Tests') {
+                    when {
+                        expression { env.BUILD_SERVICES.contains('frontend') }
+                    }
                     steps {
                         dir('frontend') {
                             sh '''
                                 npm ci
-                                npm run lint
                                 npm run test:ci
                             '''
                         }
                     }
                 }
-                stage('Security Scan') {
+                
+                stage('Integration Tests') {
                     steps {
-                        sh '''
-                            # OPS-001: Run security scan with Trivy - BLOCKING (no || true)
-                            # Critical/High vulnerabilities will fail the build
-                            for service in identity-service ledger-service payment-service product-service card-service frontend; do
-                                echo "Scanning ${DOCKER_REGISTRY}/${service}:${VERSION}..."
-                                trivy image --severity HIGH,CRITICAL --exit-code 1 ${DOCKER_REGISTRY}/${service}:${VERSION}
-                            done
-                        '''
+                        dir('backend/tests/integration') {
+                            sh '''
+                                # Run integration tests against test containers
+                                docker-compose -f docker-compose.test.yml up -d
+                                sleep 10
+                                go test -v -tags=integration ./...
+                                docker-compose -f docker-compose.test.yml down
+                            '''
+                        }
                     }
                 }
             }
         }
         
-        stage('Push Images') {
-            steps {
-                withCredentials([usernamePassword(credentialsId: env.DOCKER_CREDENTIALS, usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                    sh '''
-                        echo $DOCKER_PASS | docker login ${DOCKER_REGISTRY} -u $DOCKER_USER --password-stdin
-                        
-                        for service in identity-service ledger-service payment-service product-service card-service frontend; do
-                            docker push ${DOCKER_REGISTRY}/${service}:${VERSION}
-                            docker push ${DOCKER_REGISTRY}/${service}:latest
-                        done
-                    '''
+        // ============================================
+        // Stage 4: Security Scanning
+        // ============================================
+        stage('Security Scan') {
+            parallel {
+                stage('Vulnerability Scan') {
+                    steps {
+                        script {
+                            env.BUILD_SERVICES.split(' ').each { service ->
+                                def imageName = "${ECR_REGISTRY}/neobank/${service}:${IMAGE_TAG}"
+                                sh """
+                                    echo "Scanning ${imageName}..."
+                                    trivy image \
+                                        --severity HIGH,CRITICAL \
+                                        --exit-code 1 \
+                                        --ignore-unfixed \
+                                        --format table \
+                                        ${imageName}
+                                """
+                            }
+                        }
+                    }
+                }
+                
+                stage('SBOM Generation') {
+                    steps {
+                        script {
+                            env.BUILD_SERVICES.split(' ').each { service ->
+                                def imageName = "${ECR_REGISTRY}/neobank/${service}:${IMAGE_TAG}"
+                                sh """
+                                    syft ${imageName} -o spdx-json > sbom-${service}.json
+                                """
+                            }
+                        }
+                    }
+                    post {
+                        always {
+                            archiveArtifacts artifacts: 'sbom-*.json', allowEmptyArchive: true
+                        }
+                    }
                 }
             }
         }
         
-        // OPS-003: Manual approval for production deployments
-        stage('Approval for Production') {
-            when {
-                expression { params.DEPLOY && params.ENVIRONMENT == 'prod' }
-            }
-            steps {
-                timeout(time: 1, unit: 'HOURS') {
-                    input message: 'Deploy to Production?', 
-                          ok: 'Deploy',
-                          submitter: 'release-managers,devops'
-                }
-            }
-        }
-        
-        stage('Deploy') {
-            when {
-                expression { params.DEPLOY }
-            }
+        // ============================================
+        // Stage 5: Push & Sign Images
+        // ============================================
+        stage('Push & Sign') {
             steps {
                 script {
-                    def envFolder = params.ENVIRONMENT == 'prod' ? 'prod' : 'dev'
-                    
-                    sh """
-                        export KUBECONFIG=${KUBECONFIG}
+                    env.BUILD_SERVICES.split(' ').each { service ->
+                        def imageName = "${ECR_REGISTRY}/neobank/${service}"
                         
-                        # Update image tags in kustomization
-                        cd k8s/overlays/${envFolder}
-                        kustomize edit set image \\
-                            neobank/identity-service=${DOCKER_REGISTRY}/identity-service:${VERSION} \\
-                            neobank/ledger-service=${DOCKER_REGISTRY}/ledger-service:${VERSION} \\
-                            neobank/payment-service=${DOCKER_REGISTRY}/payment-service:${VERSION} \\
-                            neobank/product-service=${DOCKER_REGISTRY}/product-service:${VERSION} \\
-                            neobank/card-service=${DOCKER_REGISTRY}/card-service:${VERSION} \\
-                            neobank/frontend=${DOCKER_REGISTRY}/frontend:${VERSION}
-                        
-                        # Apply to Kubernetes
-                        kubectl apply -k .
-                        
-                        # Wait for rollout
-                        for deployment in identity-service ledger-service payment-service product-service card-service frontend; do
-                            kubectl rollout status deployment/\${deployment} -n neobank --timeout=300s
-                        done
-                    """
-                }
-            }
-        }
-        
-        stage('Health Check') {
-            when {
-                expression { params.DEPLOY }
-            }
-            steps {
-                script {
-                    def endpoints = [
-                        'identity-service:8081',
-                        'ledger-service:8082',
-                        'payment-service:8083',
-                        'product-service:8084',
-                        'card-service:8085'
-                    ]
-                    
-                    endpoints.each { endpoint ->
+                        // Push image
                         sh """
-                            kubectl exec -n neobank deploy/\${endpoint.split(':')[0]} -- \\
-                                wget --spider -q http://localhost:\${endpoint.split(':')[1]}/health
+                            docker push ${imageName}:${IMAGE_TAG}
+                            docker tag ${imageName}:${IMAGE_TAG} ${imageName}:latest
+                            docker push ${imageName}:latest
                         """
+                        
+                        // Sign with Cosign (keyless)
+                        sh """
+                            COSIGN_EXPERIMENTAL=1 cosign sign --yes ${imageName}:${IMAGE_TAG}
+                        """
+                        
+                        // Attach SBOM
+                        sh """
+                            cosign attach sbom --sbom sbom-${service}.json ${imageName}:${IMAGE_TAG}
+                        """
+                    }
+                }
+            }
+        }
+        
+        // ============================================
+        // Stage 6: Update Manifests (GitOps)
+        // ============================================
+        stage('Update Manifests') {
+            when {
+                expression { params.UPDATE_MANIFESTS }
+            }
+            steps {
+                script {
+                    // Checkout manifests repo
+                    dir('manifests') {
+                        git(
+                            url: env.MANIFEST_REPO,
+                            credentialsId: env.MANIFEST_CREDENTIALS,
+                            branch: params.TARGET_ENV
+                        )
+                        
+                        // Update image tags
+                        env.BUILD_SERVICES.split(' ').each { service ->
+                            def kustomizePath = "services/${service}/${params.TARGET_ENV}/kustomization.yaml"
+                            
+                            if (fileExists(kustomizePath)) {
+                                sh """
+                                    cd services/${service}/${params.TARGET_ENV}
+                                    kustomize edit set image \
+                                        neobank/${service}=${ECR_REGISTRY}/neobank/${service}:${IMAGE_TAG}
+                                """
+                            }
+                        }
+                        
+                        // Commit changes
+                        sh """
+                            git config user.email "jenkins@neobank.com"
+                            git config user.name "Jenkins CI"
+                            git add -A
+                            git commit -m "chore: update ${params.TARGET_ENV} images to ${IMAGE_TAG}
+
+Services: ${env.BUILD_SERVICES}
+Source commit: ${env.GIT_FULL_SHA}
+Message: ${env.GIT_COMMIT_MSG}
+
+[skip ci]"
+                        """
+                        
+                        // Create branch and push
+                        def branchName = "deploy/${params.TARGET_ENV}/${IMAGE_TAG}"
+                        sh """
+                            git checkout -b ${branchName}
+                            git push origin ${branchName}
+                        """
+                        
+                        // Create PR using GitHub CLI
+                        withCredentials([string(credentialsId: 'github-token', variable: 'GH_TOKEN')]) {
+                            sh """
+                                gh pr create \
+                                    --title "[Deploy] Update ${params.TARGET_ENV} to ${IMAGE_TAG}" \
+                                    --body "## Automated Deployment PR
+
+**Source Commit:** ${env.GIT_FULL_SHA}
+**Target Environment:** ${params.TARGET_ENV}
+**Services Updated:** ${env.BUILD_SERVICES}
+
+### Changes
+- Updated container image tags to \`${IMAGE_TAG}\`
+
+### Commit Message
+\`\`\`
+${env.GIT_COMMIT_MSG}
+\`\`\`
+
+### Verification
+- [x] Images built successfully
+- [x] Unit tests passed
+- [x] Security scan passed
+- [x] Images signed with Cosign
+- [x] SBOM attached
+
+---
+*This PR was automatically created by Jenkins CI*" \
+                                    --base ${params.TARGET_ENV} \
+                                    --label "automated,deployment,${params.TARGET_ENV}"
+                            """
+                        }
                     }
                 }
             }
         }
     }
     
+    // ============================================
+    // Post Actions
+    // ============================================
     post {
         success {
-            slackSend(channel: env.SLACK_CHANNEL, color: 'good', 
-                message: "✅ NeoBank ${params.ENVIRONMENT} deployment successful! Version: ${env.VERSION}")
+            slackSend(
+                channel: env.SLACK_CHANNEL,
+                color: 'good',
+                message: """✅ *NeoBank Build Successful*
+• *Services:* ${env.BUILD_SERVICES}
+• *Image Tag:* `${env.IMAGE_TAG}`
+• *Target:* ${params.TARGET_ENV}
+• *Build:* <${env.BUILD_URL}|#${env.BUILD_NUMBER}>
+• *Commit:* `${env.GIT_SHA}` - ${env.GIT_COMMIT_MSG.take(50)}
+
+_Argo CD will sync automatically for dev/staging. Production requires manual approval._"""
+            )
         }
+        
         failure {
-            slackSend(channel: env.SLACK_CHANNEL, color: 'danger',
-                message: "❌ NeoBank ${params.ENVIRONMENT} deployment failed! Build: ${env.BUILD_URL}")
+            slackSend(
+                channel: env.SLACK_CHANNEL,
+                color: 'danger',
+                message: """❌ *NeoBank Build Failed*
+• *Services:* ${env.BUILD_SERVICES}
+• *Stage:* ${env.STAGE_NAME}
+• *Build:* <${env.BUILD_URL}|#${env.BUILD_NUMBER}>
+• *Commit:* `${env.GIT_SHA}`
+
+<${env.BUILD_URL}console|View Console Output>"""
+            )
         }
+        
         always {
+            // Cleanup
+            sh 'docker system prune -f || true'
             cleanWs()
         }
     }
 }
 
-// Helper function to build a backend service
-def buildService(String serviceName) {
-    dir('backend') {
-        sh """
-            docker build -t ${DOCKER_REGISTRY}/${serviceName}:${VERSION} \\
-                -f ${serviceName}/Dockerfile .
-            docker tag ${DOCKER_REGISTRY}/${serviceName}:${VERSION} \\
-                ${DOCKER_REGISTRY}/${serviceName}:latest
-        """
-    }
+// ============================================
+// Helper Functions
+// ============================================
+
+def buildDockerImage(String service) {
+    def context = service == 'frontend' ? 'frontend' : "backend/${service}"
+    def dockerfile = "${context}/Dockerfile"
+    def imageName = "${ECR_REGISTRY}/neobank/${service}:${IMAGE_TAG}"
+    
+    echo "Building ${service}..."
+    
+    sh """
+        docker build \
+            --build-arg VERSION=${IMAGE_TAG} \
+            --build-arg COMMIT_SHA=${GIT_FULL_SHA} \
+            --build-arg BUILD_TIME=\$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+            --label org.opencontainers.image.source=https://github.com/your-org/neobank \
+            --label org.opencontainers.image.revision=${GIT_FULL_SHA} \
+            --label org.opencontainers.image.version=${IMAGE_TAG} \
+            -t ${imageName} \
+            -f ${dockerfile} \
+            ${context}
+    """
 }

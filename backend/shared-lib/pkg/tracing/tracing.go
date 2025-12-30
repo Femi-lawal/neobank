@@ -3,6 +3,7 @@ package tracing
 import (
 	"context"
 	"log/slog"
+	"os"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -27,11 +28,16 @@ type Config struct {
 
 // DefaultConfig returns a default tracing configuration
 func DefaultConfig(serviceName string) Config {
+	endpoint := "localhost:4317"
+	if envEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"); envEndpoint != "" {
+		endpoint = envEndpoint
+	}
+
 	return Config{
 		ServiceName:    serviceName,
 		ServiceVersion: "1.0.0",
 		Environment:    "development",
-		OTLPEndpoint:   "localhost:4317",
+		OTLPEndpoint:   endpoint,
 		Enabled:        true,
 	}
 }
@@ -69,7 +75,7 @@ func InitTracing(ctx context.Context, cfg Config) (*TracerProvider, error) {
 	res, err := resource.Merge(
 		resource.Default(),
 		resource.NewWithAttributes(
-			semconv.SchemaURL,
+			"", // Use empty schema URL to allow merge with Default() which has newer schema
 			semconv.ServiceName(cfg.ServiceName),
 			semconv.ServiceVersion(cfg.ServiceVersion),
 			attribute.String("environment", cfg.Environment),

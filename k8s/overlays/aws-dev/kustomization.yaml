@@ -1,0 +1,156 @@
+# =============================================================================
+# AWS Dev Overlay - Kustomization
+# =============================================================================
+# NOTE: This overlay requires environment-specific values to be set before deployment.
+# Use envsubst or similar tool to substitute placeholders with actual values.
+#
+# Required environment variables:
+#   - AWS_ACCOUNT_ID: Your AWS account ID
+#   - AWS_REGION: AWS region (e.g., us-east-1)
+#   - RDS_ENDPOINT: RDS PostgreSQL endpoint
+#   - REDIS_ENDPOINT: ElastiCache Redis endpoint
+#
+# Secrets should be managed via:
+#   - AWS Secrets Manager with External Secrets Operator
+#   - Or sealed-secrets for GitOps workflows
+# =============================================================================
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: neobank
+
+resources:
+  - ../../base
+  - ../../istio
+
+namePrefix: dev-
+
+commonLabels:
+  environment: dev
+  cost-center: development
+  team: platform
+
+# Image references - substitute AWS_ACCOUNT_ID and AWS_REGION before deployment
+# Example: envsubst < kustomization.yaml | kubectl apply -f -
+images:
+  - name: neobank/card-service
+    newName: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/neobank/card-service
+    newTag: "latest"
+  - name: neobank/identity-service
+    newName: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/neobank/identity-service
+    newTag: "latest"
+  - name: neobank/product-service
+    newName: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/neobank/product-service
+    newTag: "latest"
+  - name: neobank/frontend
+    newName: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/neobank/frontend
+    newTag: "latest"
+  - name: neobank/payment-service
+    newName: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/neobank/payment-service
+    newTag: "latest"
+  - name: neobank/ledger-service
+    newName: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/neobank/ledger-service
+    newTag: "latest"
+
+patches:
+  # Service Account IAM Role patches - substitute AWS_ACCOUNT_ID before deployment
+  - patch: |-
+      - op: replace
+        path: /metadata/annotations/eks.amazonaws.com~1role-arn
+        value: "arn:aws:iam::${AWS_ACCOUNT_ID}:role/neobank-dev-identity-service-role"
+    target:
+      kind: ServiceAccount
+      name: identity-service-sa
+  - patch: |-
+      - op: replace
+        path: /metadata/annotations/eks.amazonaws.com~1role-arn
+        value: "arn:aws:iam::${AWS_ACCOUNT_ID}:role/neobank-dev-ledger-service-role"
+    target:
+      kind: ServiceAccount
+      name: ledger-service-sa
+  - patch: |-
+      - op: replace
+        path: /metadata/annotations/eks.amazonaws.com~1role-arn
+        value: "arn:aws:iam::${AWS_ACCOUNT_ID}:role/neobank-dev-payment-service-role"
+    target:
+      kind: ServiceAccount
+      name: payment-service-sa
+  - patch: |-
+      - op: replace
+        path: /metadata/annotations/eks.amazonaws.com~1role-arn
+        value: "arn:aws:iam::${AWS_ACCOUNT_ID}:role/neobank-dev-product-service-role"
+    target:
+      kind: ServiceAccount
+      name: product-service-sa
+  - patch: |-
+      - op: replace
+        path: /metadata/annotations/eks.amazonaws.com~1role-arn
+        value: "arn:aws:iam::${AWS_ACCOUNT_ID}:role/neobank-dev-card-service-role"
+    target:
+      kind: ServiceAccount
+      name: card-service-sa
+
+  # ConfigMap patch for database/cache endpoints - substitute before deployment
+  - patch: |-
+      - op: replace
+        path: /data/DB_HOST
+        value: "${RDS_ENDPOINT}"
+      - op: replace
+        path: /data/DB_PORT
+        value: "5432"
+      - op: replace
+        path: /data/DB_NAME
+        value: "newbank_core"
+      - op: replace
+        path: /data/REDIS_ADDR
+        value: "${REDIS_ENDPOINT}"
+    target:
+      kind: ConfigMap
+      name: neobank-config
+
+  # ConfigMap patches for dev environment settings
+  - patch: |-
+      - op: replace
+        path: /data/LOG_LEVEL
+        value: "info"
+      - op: replace
+        path: /data/ENVIRONMENT
+        value: "dev"
+      - op: add
+        path: /data/ENABLE_FINOPS
+        value: "true"
+      - op: add
+        path: /data/ENABLE_DR_TESTING
+        value: "true"
+      - op: replace
+        path: /data/DB_SSLMODE
+        value: "require"
+    target:
+      kind: ConfigMap
+      name: neobank-config
+
+# =============================================================================
+# IMPORTANT: Secrets Management
+# =============================================================================
+# DO NOT store secrets in this file. Use one of the following approaches:
+#
+# Option 1: External Secrets Operator (Recommended for AWS)
+#   - Install External Secrets Operator
+#   - Create ExternalSecret resources that sync from AWS Secrets Manager
+#   - See k8s/base/external-secrets/ for examples
+#
+# Option 2: Sealed Secrets (For GitOps)
+#   - Install sealed-secrets controller
+#   - Use kubeseal to encrypt secrets before committing
+#
+# Option 3: Manual secret creation (For development only)
+#   kubectl create secret generic neobank-db-credentials \
+#     --from-literal=username=<DB_USERNAME> \
+#     --from-literal=password=<DB_PASSWORD> \
+#     -n neobank
+#
+#   kubectl create secret generic neobank-jwt \
+#     --from-literal=secret=<JWT_SECRET> \
+#     -n neobank
+# =============================================================================

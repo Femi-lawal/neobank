@@ -1,0 +1,34 @@
+# LocalStack Docker Compose for local AWS testing
+version: '3.8'
+
+services:
+  localstack:
+    container_name: localstack-neobank
+    image: localstack/localstack:latest
+    ports:
+      - "4566:4566"            # LocalStack Gateway
+      - "4510-4559:4510-4559"  # External services port range
+    environment:
+      - DEBUG=1
+      - SERVICES=secretsmanager,kms,s3,iam,sts,ec2,eks,rds,elasticache,cloudwatch,logs,sns,dynamodb,sqs,lambda
+      - DEFAULT_REGION=us-east-1
+      - AWS_DEFAULT_REGION=us-east-1
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - PERSISTENCE=1
+      - S3_SKIP_SIGNATURE_VALIDATION=1
+      - DISABLE_CORS_CHECKS=1
+      - EAGER_SERVICE_LOADING=1
+    volumes:
+      - "${LOCALSTACK_VOLUME_DIR:-./volume}:/var/lib/localstack"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    networks:
+      - localstack-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+networks:
+  localstack-net:
+    driver: bridge

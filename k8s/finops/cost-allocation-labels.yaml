@@ -1,0 +1,126 @@
+# Cost Allocation Labels Configuration
+# Defines standard labels for cost tracking and chargebacks
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cost-allocation-labels
+  namespace: finops
+  labels:
+    app: finops
+    component: cost-allocation
+data:
+  # Standard cost allocation labels
+  label-policy.yaml: |
+    # Required labels for all NeoBank resources
+    requiredLabels:
+      - name: cost-center
+        description: "Department or team responsible for the cost"
+        allowedValues:
+          - platform-operations
+          - core-banking
+          - security
+          - customer-experience
+          - transactions
+          - card-operations
+          - product-management
+          - infrastructure
+      
+      - name: environment
+        description: "Deployment environment"
+        allowedValues:
+          - development
+          - staging
+          - production
+          - dr
+      
+      - name: service-tier
+        description: "Service criticality level"
+        allowedValues:
+          - tier-1  # Critical path services
+          - tier-2  # Important services
+          - tier-3  # Supporting services
+      
+      - name: budget-code
+        description: "Budget tracking code"
+        pattern: "^[A-Z]{2}-[0-9]{4}$"
+
+    # Service to cost center mapping
+    serviceMappings:
+      identity-service:
+        cost-center: security
+        service-tier: tier-1
+        budget-code: SE-1001
+      
+      ledger-service:
+        cost-center: core-banking
+        service-tier: tier-1
+        budget-code: CB-2001
+      
+      payment-service:
+        cost-center: transactions
+        service-tier: tier-1
+        budget-code: TX-3001
+      
+      card-service:
+        cost-center: card-operations
+        service-tier: tier-2
+        budget-code: CO-4001
+      
+      product-service:
+        cost-center: product-management
+        service-tier: tier-2
+        budget-code: PM-5001
+      
+      frontend:
+        cost-center: customer-experience
+        service-tier: tier-1
+        budget-code: CX-6001
+      
+      postgres:
+        cost-center: infrastructure
+        service-tier: tier-1
+        budget-code: IN-7001
+      
+      redis:
+        cost-center: infrastructure
+        service-tier: tier-2
+        budget-code: IN-7002
+---
+# Kyverno policy to enforce cost labels (if Kyverno is installed)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cost-label-enforcement-policy
+  namespace: finops
+data:
+  kyverno-policy.yaml: |
+    apiVersion: kyverno.io/v1
+    kind: ClusterPolicy
+    metadata:
+      name: require-cost-labels
+      annotations:
+        policies.kyverno.io/title: Require Cost Allocation Labels
+        policies.kyverno.io/description: >-
+          Requires all Deployments in neobank namespace to have 
+          cost-center and budget-code labels for FinOps tracking.
+    spec:
+      validationFailureAction: Audit
+      background: true
+      rules:
+        - name: check-cost-labels
+          match:
+            any:
+              - resources:
+                  kinds:
+                    - Deployment
+                    - StatefulSet
+                  namespaces:
+                    - neobank
+          validate:
+            message: "Resources must have 'cost-center' and 'budget-code' labels"
+            pattern:
+              metadata:
+                labels:
+                  cost-center: "?*"
+                  budget-code: "?*"

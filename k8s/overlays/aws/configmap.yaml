@@ -1,0 +1,37 @@
+# ============================================================================
+# AWS ConfigMap - Contains non-sensitive AWS configuration
+# ============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aws-config
+  namespace: neobank
+data:
+  AWS_REGION: "${AWS_REGION}"
+  AWS_ENVIRONMENT: "aws"
+
+  # Database configuration (endpoints from Terraform)
+  DB_HOST: "${RDS_ENDPOINT}"
+  DB_PORT: "${RDS_PORT}"
+  DB_NAME: "${DB_NAME}"
+  DB_SSLMODE: "require"
+
+  # Redis configuration (endpoints from Terraform)
+  REDIS_HOST: "${REDIS_ENDPOINT}"
+  REDIS_PORT: "${REDIS_PORT}"
+  REDIS_TLS: "true"
+
+  # Kafka/MSK configuration (optional)
+  KAFKA_BROKERS: "${MSK_BOOTSTRAP_BROKERS}"
+  KAFKA_TLS: "true"
+  KAFKA_SASL: "true"
+
+  # Secrets Manager ARNs
+  DB_SECRET_ARN: "${DB_SECRET_ARN}"
+  REDIS_SECRET_ARN: "${REDIS_SECRET_ARN}"
+  JWT_SECRET_ARN: "${JWT_SECRET_ARN}"
+
+  # Observability
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
+  LOG_FORMAT: "json"
+  LOG_LEVEL: "info"

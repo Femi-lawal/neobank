@@ -28,8 +28,12 @@ export default function LoginPage() {
             });
             localStorage.setItem("token", res.data.token);
             router.push("/dashboard");
-        } catch (err: any) {
-            setError(err.response?.data?.error || "Login failed");
+        } catch (err: unknown) {
+            const errorMessage = err instanceof Error ? err.message : 
+                (typeof err === 'object' && err !== null && 'response' in err) 
+                    ? (err as { response?: { data?: { error?: string } } }).response?.data?.error || "Login failed"
+                    : "Login failed";
+            setError(errorMessage);
         } finally {
             setLoading(false);
         }
@@ -92,7 +96,7 @@ export default function LoginPage() {
                     <div className="pt-8 border-t border-surface-800 text-center">
                         <p className="text-xs text-surface-600 uppercase tracking-widest mb-4">Demo Credentials</p>
                         <div className="bg-surface-900/50 p-4 rounded-xl border border-surface-800 text-xs text-surface-400 font-mono">
-                            user@example.com <br /> password
+                            demo@neobank.com <br /> password123
                         </div>
                     </div>
                 </div>

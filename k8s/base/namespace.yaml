@@ -5,3 +5,11 @@ metadata:
   labels:
     app.kubernetes.io/name: neobank
     app.kubernetes.io/part-of: neobank
+    # Pod Security Standards - Enforce restricted policy
+    # See: https://kubernetes.io/docs/concepts/security/pod-security-standards/
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest

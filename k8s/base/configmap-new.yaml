@@ -1,0 +1,41 @@
+# ConfigMap for NeoBank - Non-secret configuration only
+# Environment-specific values are patched via Kustomize overlays
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: neobank-config
+  namespace: neobank
+data:
+  # Database connection (non-secret parts)
+  DB_HOST: "" # Set via Kustomize overlay
+  DB_PORT: "5432"
+  DB_NAME: "" # Set via Kustomize overlay
+  DB_SSLMODE: "require"
+
+  # Redis connection (non-secret parts)
+  REDIS_ADDR: "" # Set via Kustomize overlay
+  REDIS_TLS: "true"
+
+  # Service URLs (cluster-internal DNS)
+  IDENTITY_SERVICE_URL: "http://identity-service:8081"
+  LEDGER_SERVICE_URL: "http://ledger-service:8082"
+  PAYMENT_SERVICE_URL: "http://payment-service:8083"
+  PRODUCT_SERVICE_URL: "http://product-service:8084"
+  CARD_SERVICE_URL: "http://card-service:8085"
+
+  # Environment settings
+  ENVIRONMENT: "dev"
+  LOG_LEVEL: "info"
+
+  # Feature flags
+  ENABLE_METRICS: "true"
+  ENABLE_TRACING: "true"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: neobank-frontend-config
+  namespace: neobank
+data:
+  NEXT_PUBLIC_API_URL: "/api"
+  NEXT_PUBLIC_ENVIRONMENT: "dev"

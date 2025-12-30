@@ -164,6 +164,13 @@ func (s *LedgerService) PostTransaction(desc string, postings []PostingRequest) 
 		for _, accID := range affectedAccounts {
 			s.cache.Delete(ctx, cache.BalanceCacheKey(accID))
 			s.cache.Delete(ctx, cache.AccountCacheKey(accID))
+
+			// Also invalidate cache for the user who owns this account
+			acc, err := s.Repo.GetAccount(accID)
+			if err == nil && acc != nil {
+				slog.Debug("Invalidating cache for user", "user_id", acc.UserID.String())
+				s.cache.Delete(ctx, "accounts:list:"+acc.UserID.String())
+			}
 		}
 		// Also invalidate accounts list since balances changed
 		s.cache.Delete(ctx, "accounts:list")

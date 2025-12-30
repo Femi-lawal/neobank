@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import { ArrowLeft, ArrowRight, CheckCircle2, AlertCircle, Users, Clock, X, Wallet, User, DollarSign, FileText, Sparkles } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CheckCircle2, AlertCircle, X, Wallet, User, DollarSign, FileText, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Account } from '../types';
 import { useTheme } from '../context/ThemeContext';
@@ -13,6 +13,7 @@ interface RecipientAccount {
     id: string;
     name: string;
     type: 'own' | 'recent' | 'external';
+    accountId: string;
 }
 
 // Compact step progress indicator
@@ -40,8 +41,8 @@ const StepIndicator = ({ currentStep, isDark }: { currentStep: number; isDark: b
                             {currentStep > step.num ? <CheckCircle2 size={16} /> : step.num}
                         </motion.div>
                         <span className={`text-[10px] mt-1 ${currentStep >= step.num
-                                ? (isDark ? 'text-white' : 'text-slate-900')
-                                : (isDark ? 'text-surface-500' : 'text-slate-400')
+                            ? (isDark ? 'text-white' : 'text-slate-900')
+                            : (isDark ? 'text-surface-500' : 'text-slate-400')
                             }`}>
                             {step.label}
                         </span>
@@ -62,20 +63,22 @@ const StepIndicator = ({ currentStep, isDark }: { currentStep: number; isDark: b
     );
 };
 
-// Confetti animation
-const Confetti = () => {
-    const colors = ['#8B5CF6', '#EC4899', '#10B981', '#F59E0B', '#3B82F6'];
-    const particles = Array.from({ length: 30 }, (_, i) => ({
-        id: i,
-        x: Math.random() * 100,
-        color: colors[Math.floor(Math.random() * colors.length)],
-        delay: Math.random() * 0.3,
-        size: Math.random() * 6 + 3,
-    }));
+// Confetti animation - particles are pre-generated at module level
+const CONFETTI_COLORS = ['#8B5CF6', '#EC4899', '#10B981', '#F59E0B', '#3B82F6'];
 
+// Generate particles once at module load time (pure)
+const CONFETTI_PARTICLES = Array.from({ length: 30 }, (_, i) => ({
+    id: i,
+    x: (i * 3.33) % 100, // Deterministic positioning
+    color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+    delay: (i * 0.01) % 0.3,
+    size: 3 + (i % 6),
+}));
+
+const Confetti = () => {
     return (
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
-            {particles.map((p) => (
+            {CONFETTI_PARTICLES.map((p) => (
                 <motion.div
                     key={p.id}
                     initial={{ y: -10, x: `${p.x}%`, opacity: 1 }}
@@ -112,30 +115,34 @@ export default function TransfersPage() {
     const presetAmounts = [50, 100, 250, 500];
 
     const recentRecipients: RecipientAccount[] = [
-        { id: 'recent-1', name: 'John Doe', type: 'recent' },
-        { id: 'recent-2', name: 'Jane Smith', type: 'recent' },
+        { id: 'recent-1', name: 'John Doe', type: 'recent', accountId: 'b0000002-0002-0002-0002-000000000001' },
     ];
 
     useEffect(() => {
-        fetch('/api/ledger/accounts')
+        const token = localStorage.getItem('token');
+        fetch('/api/ledger/accounts', {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        })
             .then((res) => res.json())
             .then((data) => {
                 if (Array.isArray(data)) {
                     setAccounts(data);
-                    if (data.length > 0) setFromAccount(data[0].ID);
+                    if (data.length > 0) setFromAccount(data[0].id);
                 }
             })
             .catch((err) => console.error(err));
     }, []);
 
     const getAccountName = (id: string) => {
-        const acc = accounts.find(a => a.ID === id);
-        return acc?.Name || 'Unknown Account';
+        const acc = accounts.find(a => a.id === id);
+        return acc?.name || 'Unknown Account';
     };
 
     const getFromAccountBalance = () => {
-        const acc = accounts.find(a => a.ID === fromAccount);
-        return acc ? parseFloat(acc.CachedBalance) : 0;
+        const acc = accounts.find(a => a.id === fromAccount);
+        return acc ? parseFloat(acc.balance || '0') : 0;
     };
 
     const validateTransfer = (): boolean => {
@@ -172,9 +179,13 @@ export default function TransfersPage() {
         setShowConfirmModal(false);
 
         try {
-            const res = await fetch('/api/payment/transfers', {
+            const token = localStorage.getItem('token');
+            const res = await fetch('/api/payment/transfer', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
                 body: JSON.stringify({
                     from_account_id: fromAccount,
                     to_account_id: toAccount,
@@ -277,13 +288,13 @@ export default function TransfersPage() {
                             value={fromAccount}
                             onChange={(e) => setFromAccount(e.target.value)}
                             className={`block w-full rounded-lg border py-2.5 px-3 text-sm appearance-none focus:border-brand-500 outline-none ${isDark
-                                    ? 'border-surface-700 bg-surface-900/50 text-white'
-                                    : 'border-slate-200 bg-white text-slate-900'
+                                ? 'border-surface-700 bg-surface-900/50 text-white'
+                                : 'border-slate-200 bg-white text-slate-900'
                                 }`}
                         >
                             {accounts.map(acc => (
-                                <option key={acc.ID} value={acc.ID}>
-                                    {acc.Name} • ${parseFloat(acc.CachedBalance).toFixed(2)}
+                                <option key={acc.id} value={acc.id}>
+                                    {acc.name} • ${parseFloat(acc.balance || '0').toFixed(2)}
                                 </option>
                             ))}
                         </select>
@@ -306,29 +317,31 @@ export default function TransfersPage() {
 
                         {/* Quick Select Buttons */}
                         <div className="flex flex-wrap gap-1.5">
-                            {accounts.filter(a => a.ID !== fromAccount).slice(0, 3).map(acc => (
+                            {accounts.filter(a => a.id !== fromAccount).slice(0, 3).map(acc => (
                                 <button
-                                    key={acc.ID}
+                                    key={acc.id}
                                     type="button"
-                                    onClick={() => selectOwnAccount(acc.ID)}
-                                    className={`px-2.5 py-1.5 rounded-md text-xs transition-all ${toAccount === acc.ID
-                                            ? 'bg-brand-500 text-white'
-                                            : (isDark
-                                                ? 'bg-surface-800 text-surface-300 hover:bg-surface-700'
-                                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200')
+                                    onClick={() => selectOwnAccount(acc.id)}
+                                    className={`px-2.5 py-1.5 rounded-md text-xs transition-all ${toAccount === acc.id
+                                        ? 'bg-brand-500 text-white'
+                                        : (isDark
+                                            ? 'bg-surface-800 text-surface-300 hover:bg-surface-700'
+                                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200')
                                         }`}
                                 >
-                                    {acc.Name}
+                                    {acc.name}
                                 </button>
                             ))}
                             {recentRecipients.slice(0, 2).map(r => (
                                 <button
                                     key={r.id}
                                     type="button"
-                                    onClick={() => setRecipientName(r.name)}
-                                    className={`px-2.5 py-1.5 rounded-md text-xs ${isDark
-                                            ? 'bg-surface-800 text-surface-400 hover:bg-surface-700'
-                                            : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                                    onClick={() => selectOwnAccount(r.accountId)}
+                                    className={`px-2.5 py-1.5 rounded-md text-xs font-medium border transition-all ${toAccount === r.accountId
+                                        ? 'bg-brand-500 text-white border-brand-500'
+                                        : (isDark
+                                            ? 'bg-surface-800 text-surface-300 border-surface-700 hover:bg-surface-700 hover:border-surface-600'
+                                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300')
                                         }`}
                                 >
                                     {r.name}
@@ -342,8 +355,8 @@ export default function TransfersPage() {
                             value={toAccount}
                             onChange={(e) => { setToAccount(e.target.value); setRecipientName(''); }}
                             className={`block w-full rounded-lg border py-2.5 px-3 text-sm focus:border-brand-500 outline-none ${isDark
-                                    ? 'border-surface-700 bg-surface-900/50 text-white placeholder:text-surface-600'
-                                    : 'border-slate-200 bg-white text-slate-900 placeholder:text-slate-400'
+                                ? 'border-surface-700 bg-surface-900/50 text-white placeholder:text-surface-600'
+                                : 'border-slate-200 bg-white text-slate-900 placeholder:text-slate-400'
                                 }`}
                             required
                         />
@@ -366,8 +379,8 @@ export default function TransfersPage() {
                                 value={amount}
                                 onChange={(e) => setAmount(e.target.value)}
                                 className={`block w-full rounded-lg border py-3 pl-8 pr-3 text-2xl font-bold text-center focus:border-brand-500 outline-none ${isDark
-                                        ? 'border-surface-700 bg-surface-900/50 text-white placeholder:text-surface-600'
-                                        : 'border-slate-200 bg-white text-slate-900 placeholder:text-slate-300'
+                                    ? 'border-surface-700 bg-surface-900/50 text-white placeholder:text-surface-600'
+                                    : 'border-slate-200 bg-white text-slate-900 placeholder:text-slate-300'
                                     }`}
                                 required
                             />
@@ -381,10 +394,10 @@ export default function TransfersPage() {
                                     type="button"
                                     onClick={() => setAmount(p.toString())}
                                     className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-all ${amount === p.toString()
-                                            ? 'bg-brand-500 text-white'
-                                            : (isDark
-                                                ? 'bg-surface-800 text-surface-300 hover:bg-surface-700'
-                                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200')
+                                        ? 'bg-brand-500 text-white'
+                                        : (isDark
+                                            ? 'bg-surface-800 text-surface-300 hover:bg-surface-700'
+                                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200')
                                         }`}
                                 >
                                     ${p}
@@ -394,8 +407,8 @@ export default function TransfersPage() {
                                 type="button"
                                 onClick={() => setAmount(getFromAccountBalance().toFixed(2))}
                                 className={`flex-1 py-1.5 rounded-md text-xs font-medium ${isDark
-                                        ? 'bg-surface-800 text-brand-400 hover:bg-surface-700'
-                                        : 'bg-slate-100 text-brand-500 hover:bg-slate-200'
+                                    ? 'bg-surface-800 text-brand-400 hover:bg-surface-700'
+                                    : 'bg-slate-100 text-brand-500 hover:bg-slate-200'
                                     }`}
                             >
                                 Max
@@ -410,8 +423,8 @@ export default function TransfersPage() {
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
                         className={`block w-full rounded-lg border py-2.5 px-3 text-sm focus:border-brand-500 outline-none ${isDark
-                                ? 'border-surface-700 bg-surface-900/50 text-white placeholder:text-surface-500'
-                                : 'border-slate-200 bg-white text-slate-900 placeholder:text-slate-400'
+                            ? 'border-surface-700 bg-surface-900/50 text-white placeholder:text-surface-500'
+                            : 'border-slate-200 bg-white text-slate-900 placeholder:text-slate-400'
                             }`}
                     />
 
@@ -440,8 +453,8 @@ export default function TransfersPage() {
                             className="fixed inset-4 sm:inset-auto sm:top-1/2 sm:left-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:w-full sm:max-w-sm z-50 flex items-center justify-center"
                         >
                             <div className={`rounded-2xl p-5 border shadow-2xl w-full max-h-[90vh] overflow-y-auto ${isDark
-                                    ? 'bg-surface-900 border-surface-700'
-                                    : 'bg-white border-slate-200'
+                                ? 'bg-surface-900 border-surface-700'
+                                : 'bg-white border-slate-200'
                                 }`}>
                                 <button
                                     onClick={() => { setShowConfirmModal(false); setCurrentStep(1); }}

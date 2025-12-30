@@ -117,7 +117,9 @@ jobs:
         working-directory: backend
         run: |
           for service in identity-service ledger-service payment-service product-service card-service; do
-            docker build -t neobank/$service:${{ github.sha }} ./$service
+            echo "Building $service..."
+            # Use backend/ as context since Dockerfiles reference go.work and shared-lib
+            docker build -t neobank/$service:${{ github.sha }} -f $service/Dockerfile .
           done
 
   security:
@@ -127,11 +129,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Install Gosec
+        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+
       - name: Run Gosec security scanner
-        uses: securego/gosec@master
-        with:
-          args: "-no-fail -fmt sarif -out results.sarif ./..."
         working-directory: backend
+        run: gosec -no-fail -fmt sarif -out results.sarif ./...
 
       - name: Upload SARIF file
         uses: github/codeql-action/upload-sarif@v3
